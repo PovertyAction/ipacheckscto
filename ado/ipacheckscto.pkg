@@ -1,0 +1,5 @@
+v 1.0
+d IPA stata program to review SurveyCTO xls forms
+f ipacheckscto.ado
+f ipacheckscto.dlg
+f ipacheckscto.sthlp

@@ -1,0 +1,42 @@
+/* Title	: ipacheckscto
+   Purpose	: Dialog Box for using ipacheckscto.ado
+   Date		: 14feb2018
+   Author	: Ishmail Azindoo Baako
+			  iabaako@poverty-action.org
+*/
+
+*! version 1.0 Ishmail Azindoo Baako (IPA)
+
+VERSION 14.0
+
+POSITION 300 200 600 230 50
+
+DIALOG main, label("ipacheckscto - Check SurveyCTO XLS Form") tabtitle("Main")
+BEGIN
+  GROUPBOX gb_info  10   10   580  60, label(information)
+  TEXT     tx_desc  +10  +20  560  .,  label(IMPORTANT: Ensure the xls form correctly uploads to the SurveyCTO server before running this command) 
+  TEXT     tx_xls   10   80	  120	 ., label(Select XLS Form)
+  FILE 	   fl_xls 	10	 +20	580	 ., label(Browse ...) error(select contract request)
+  TEXT	   tx_out		10	 +40  400	 ., label(Optionally Save Output to Excel File)
+  FILE 	   fl_out		10	 +20  580  ., label(Save As ...) error(specify output file) save
+  CHECKBOX cb_rep   20   +30  .    ., label(replace) option(replace) 
+END
+
+OK ok1,      label("OK")
+CANCEL can1, label("Cancel")
+HELP hlp1,   view("help ipacheckscto")
+RESET res1
+COPY copy1
+
+PROGRAM command
+BEGIN
+    put "ipacheckscto using "
+    require main.fl_xls 
+    put `"""' main.fl_xls `"""' 
+	  if main.fl_out.isneq("") {
+      put ", outfile("
+      put `"""' main.fl_out `"""' 
+      put ")
+        option main.cb_rep
+    }
+END
