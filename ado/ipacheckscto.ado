@@ -428,28 +428,127 @@ program define ipacheckscto
 										  in  `index'/`lastrow'
 			}
 
+
 			* foreach repeat group var, check if it was used outside the repeat group
 			levelsof name if rpt_field, loc (rvars) clean
 
-			* first check that do not require complex calculation
+			** first reove functions that allow repeat vars
 
-				** Complex: constraint, relevance, calculation, repeat_count
+			#d;
+			loc funcs
+				"
+				"join" 				"join-if"
+				"sum"				"sum-if"
+				"min" 				"min-if"
+				"max"				"max-if"
+				"rank-index" 		"rank-index-if"
+				"indexed-repeat"
+				"
+				;
+			#d cr
+			
+			foreach var of varlist appearance constraint relevance calculation repeat_count {
+				
+				replace `var' = subinstr(`var', "$", "#", .)
+
+				* check for syntax that are used in the program
+				foreach func in `funcs' {
+					cap assert !regexm(`var', "`func'\(")
+					loc rc = _rc
+					while `rc' == 9 {
+						getsyntax `var', function("`func'") gen(function)
+						replace `var' = subinstr(`var', function, "##", .)
+						drop function
+
+						cap assert !regexm(`var', "`func'\(")
+						loc rc = _rc
+					}
+				}
+
+			}
+
+			* check for inappropraite use of syntax
 			gen rpt_flag 	= 0
 			gen rpt_flagvar = "/"
 			gen rpt_flagcol	= "/"
+
+			#d;
+			unab cols:
+				label* 
+				mediaimage* 
+				mediaaudio* 
+				mediavideo* 
+				appearance 
+				constraint 
+				relevance 
+				calculation 
+				repeat_count 
+				;
+			#d cr
 			
-			foreach var of varlist label* appearance mediaimage* mediaaudio* mediavideo* {
-				
+			foreach var of varlist `cols' {
+			
 				foreach rvar in `rvars' {
-
 					levelsof rpt_group if name == "`rvar'", loc(rvar_group) clean 
-
-					if "`var'" ~= "calculation" {
 						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'" 
 						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
 						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
-					}
 				}				
+
+			}
+
+			keep row type name label rpt_flag rpt_flagvar rpt_flagcol
+
+			keep if rpt_flag
+
+			gen sheet = "survey"
+
+			save "`check7'"
+
+
+			* import and check choices sheet
+			use "`choices'", clear
+
+			gen rpt_flag 	= 0
+			gen rpt_flagvar = "/"
+			gen rpt_flagcol	= "/"
+
+			loc choice_flag_cnt 0
+			foreach var of varlist label* {
+				foreach rvar in `rvars' {
+						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") 
+						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}")
+						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}")
+				}	
+			}
+			
+
+
+			if `=_N' > 0 {
+				replace rpt_flagvar = itrim(trim(subinstr(rpt_flagvar, "/", " ", .)))
+				replace rpt_flagcol = itrim(trim(subinstr(rpt_flagcol, "/", " ", .)))
+
+				split rpt_flagvar
+				split rpt_flagcol
+
+				drop rpt_flagcol rpt_flagvar
+
+				ren rpt_flagcol column
+
+				reshape long rpt_flagvar rpt_flagcol, i(row) j(instance)
+				drop instance
+
+				ren rpt_flagvar repeat_field
+
+				noi header, checknum(7) checkmessage("GROUP NAMES")
+
+				noi disp 			"{p}The following following fields contain repeat group fields that have been used illegally.{p_end}"			
+
+				noi list row type name repeat_field column, noobs abbrev(32) sep(0)
+				noi disp
+
+				save "`check7'"
+
 
 			}
 
@@ -505,6 +604,49 @@ program define getrow, rclass
 	c_local `local' "`rows'"
 
 end 
+
+program define getsyntax 
+
+	syntax varname, FUNCTION(string) GENerate(name)
+	* set trace on
+	getrow if regexm(`varlist', "`function'\("), loc (rows)
+	
+	gen `generate' 		= ""
+	loc len_function 	= length("`function'") + 1
+	
+	foreach row in `rows' {
+	    
+		loc text = `varlist'[`row']
+		loc len_text = length("`text'")
+		loc cont 1
+		loc spos = strpos("`text'", "`function'(")
+		loc start = `spos' + `len_function' + 1
+		
+		loc open 	1
+		loc close 	0 
+		while `cont' == 1 {
+			loc char = substr("`text'", `start', 1)
+			if 		"`char'" == "(" loc ++open
+			else if "`char'" == ")" loc ++close
+			
+			if `open' == `close' {
+				replace `generate' = substr("`text'", `spos', `start') in `row'
+				loc cont 0
+			}
+			else if `start' > `len_text' {
+				di as error "Invalid syntax: Unequal number of ( or ) on row `row'"
+				loc cont 0
+			}
+			else loc ++start
+
+		}
+		
+	}
+	
+
+
+end
+
 
 
 * adjust outfile columns
