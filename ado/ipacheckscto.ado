@@ -18,7 +18,7 @@ program define ipacheckscto
 
 		tempname  summ ch0
 		tempfile  survey choices repeat repeat_long grouppairs
-		tempfile  summary check0 check1 check2 check3 check4 check5 check6 check7
+		tempfile  summary check0 check1 check2 check3 check4 check5 check6 check7 check8
 
 		* add dummies for exporting data
 
@@ -61,13 +61,14 @@ program define ipacheckscto
 			post `summ' ("") 				("") 					("")
 			post `summ' ("Form Details") 	("") 					("")
 			post `summ' ("") 				("") 					("")
-			post `summ' ("") 				("") 					("")
 			post `summ' ("filename") 		("`filename'") 			("")
 			post `summ' ("Form Title") 		("`=form_title[1]'") 	("")
 			
 			post `summ' ("Form ID") 				("`=form_id[1]'") 			("")
 			post `summ' ("Form Definition Version") ("`=version[1]'") 			("")
-			post `summ' ("Number of Languages") 	("`=default_language[1]'") 	("")
+
+			post `summ' ("Number of Languages") 	("") 						("")
+			post `summ' ("Default Language") 		("`=default_language[1]'") 	("")
 
 			if "`=public_key[1]'" ~= "" loc encrypted "Yes"
 			else 						loc encrypted "No"
@@ -93,6 +94,9 @@ program define ipacheckscto
 			post `summ' ("5. other specify") 		("Check that or_other is not used and manual osp fields are specified") ("")
 			post `summ' ("6. group names") 			("Check that group and repeat gropu names match in begin & end repeat") ("")
 			post `summ' ("7. repeat vars") 			("Check that fields in repeat group are properly suffixed") 			("")
+			post `summ' ("8. choices")	 			("Check for duplicates in choices list")					 			("")
+
+			postclose `summ'
 
 		}
 		
@@ -119,31 +123,45 @@ program define ipacheckscto
 		* ----------------------------------------------------------------
 		* Auto generated starttime, endtime and duration are useful for IPA HFC Templates
 
-		count if inlist(type, "start", "end") | inlist(calculation, "duration()")
-		if `r(N)' < 3 {
+		count if (inlist(type, "start", "end") | inlist(calculation, "duration()")) & (lower(disabled) ~= "yes")
+		
+		postfile 	`ch0' str50 (variable disabled) str100 comment using "`check0'"
+		count if type == "start"
+		if `r(N)' == 0 post `ch0' ("starttime") ("") ("starttime field is missing")
+		else {
+			count if type == "start" & lower(disabled) == "yes" 
+			if `r(N)' > 0 post `ch0' ("starttime") ("yes") ("starttime field is disabled")
+		}
+
+		count if type == "end"
+		if `r(N)' == 0 post `ch0' ("endtime") ("") ("endtime field is missing")
+		else {
+			count if type == "end" & lower(disabled) == "yes" 
+			if `r(N)' > 0 post `ch0' ("endtime") ("yes") ("endtime field is disabled")
+		}
+	
+		count if type == "calculate" & calculation == "duration()"
+		if `r(N)' == 0 post `ch0' ("duration") ("") ("duration field is missing")
+		else {
+			count if type == "calculate" & calculation == "duration()" & lower(disabled) == "yes"
+			if `r(N)' > 0 post `ch0' ("duration") ("yes") ("duration field is disabled")
+		}
+		
+		postclose `ch0'
+
+		use "`check0'", clear
+
+		loc check0_cnt `=_N'
+		
+		if `check0_cnt' > 0 {
 			
-			noi header, checknum(0) checkmessage("SOME RECOMMENDED FIELDS ARE MISSING") 
+			noi header, checknum(0) checkmessage("RECOMMENDED FIELDS ARE MISSING OR DISABLED") 
 			
-			noi disp  	"{p}The following fields are missing from your form. Please note that these field are " ///
+			noi disp  	"{p}The following fields are missing or disabled. Please note that these field are " ///
 						"required for IPA Data Quality Checks{p_end}"
 			noi disp
 			
-			postfile 	`ch0' str50 variable str100 comment using `check0'
-			post 		`ch0'	  	("fieldname") ("comment")
-			
-			loc i 3
-			foreach name in starttime endtime duration {
-				cap assert !regexm(name, "`name'")
-				if !_rc {
-					noi disp "`name'"
-					loc ++i
-
-					if `export' {
-						post `ch0' ("`name'") ("`name' is needed for data quality checks")
-					}
-				}
-				
-			}
+			noi list, noobs abbrev(32) sep(0) table
 
 			noi disp 
 			noi disp
@@ -155,10 +173,12 @@ program define ipacheckscto
 
 		use "`survey'", clear
 		keep if length(name) > 22
+
+		loc check1_cnt `=_N'
 		
-		if `=_N' > 0 {
+		if `check1_cnt' > 0 {
 			
-			noi header, checknum(1) checkmessage("SOME FIELD NAMES ARE TOO LONG")
+			noi header, checknum(1) checkmessage("LONG FIELD NAMES")
 
 			noi disp 			"{p}The following fields have names with character length greater than 22.{p_end}"
 			noi disp
@@ -166,9 +186,11 @@ program define ipacheckscto
 			gen char_length = length(name)
 			keep row type name char_length 
 
+			order row type name char_length
+
 			save "`check1'"
 
-			noi list row type name char_length, noobs abbrev(32) sep(0) table
+			noi list, noobs abbrev(32) sep(0) table
 			noi disp
 			
 		}
@@ -178,16 +200,19 @@ program define ipacheckscto
 		
 		use "`survey'", clear
 		keep if regexm(lower(disabled), "yes") | regexm(lower(readonly), "yes") 
+
+		loc check2_cnt `=_N'
 		
-		if `=_N' > 0 {
+		if `check2_cnt' > 0 {
 			noi header, checknum(2) checkmessage("DISABLED & READ ONLY FIELDS")
 		
 			noi disp 			"{p}The following fields have been disabled.{p_end}"
 			noi disp
 
 			keep row type name disabled readonly
+			sort row type name disabled readonly
 
-			noi list row type name disabled readonly, noobs abbrev(32) sep(0)
+			noi list, noobs abbrev(32) sep(0)
 			noi disp
 			
 			save "`check2'"
@@ -204,12 +229,15 @@ program define ipacheckscto
 		keep if (lower(required) ~= "yes" & regexm(type, "integer|(text)$|date|time|select_") & lower(appearance) ~= "label") | ///
 				(lower(required) == "yes" & (type == "note" | lower(readonly) == "yes"))
 
-		if `=_N' > 0 {
+		loc check3_cnt `=_N'
+
+		if `check3_cnt' > 0 {
 			noi header, checknum(3) checkmessage("FIELD REQUIREMENTS")
 
 			noi disp 			"{p}The following fields have issues with requirement.{p_end}"
 
-			keep row type name label appearance readonly required
+			keep row type name label* appearance readonly required
+			order row type name label* appearance readonly required
 			
 			* label each issue type
 			gen comment = 	cond(lower(required) ~= "yes" & regexm(type, "integer|(text)$|date|time|select_"), "field is not required", ///
@@ -230,29 +258,38 @@ program define ipacheckscto
 		* ----------------------------
 
 		use "`survey'", clear
-		keep if (missing(constraint) & inlist(type, "integer", "decimal")) 				| ///
-				(missing(constraint) & type == "text" & regexm(appearance, "numbers")) 	| ///
-				(!missing(constraint) & missing(constraintmessage)) 
 
-		if `=_N' > 0 {
+		unab mcm: constraintmessage*
+		loc mcm_cnt = wordcount("`mcm'") 
+
+		egen nmcm_cnt = rownonmiss(constraintmessage*), strok
+		keep if (nmcm_cnt < `mcm_cnt' & inlist(type, "integer", "decimal")) 				| ///
+				(nmcm_cnt < `mcm_cnt' & type == "text" & regexm(appearance, "numbers")) 	| ///
+				(nmcm_cnt < `mcm_cnt' & !missing(constraint)) 
+
+		loc check4_cnt `=_N'
+
+		if `check4_cnt' > 0 {
 
 			noi header, checknum(4) checkmessage("CONSTRAINT")
 
-			noi disp 			"{p}The following fields missing constraint or constraint message.{p_end}"
+			noi disp 			"{p}The following fields are missing constraint or constraint message.{p_end}"
 
-			keep row type name label appearance constraint constraintmessage
+			keep row type name label* appearance constraint constraintmessage* nmcm_cnt
+			order row type name label* appearance constraint constraintmessage* nmcm_cnt
 
 			* label each issue type
-			gen comment = cond(!missing(constraint) & missing(constraintmessage), "missing constraint message", "missing constraint")
+			gen comment = cond(!missing(constraint) & nmcm_cnt < `mcm_cnt', "missing constraint message", "missing constraint")
 			
-			noi list row type name appearance constraint constraintmessage comment, noobs abbrev(32) sep(0)
+			noi list row type name appearance constraint constraintmessage* comment, noobs abbrev(32) sep(0)
 			noi disp
+
+			drop nmcm_cnt
 
 			save "`check4'"
 
 		}
-
-
+		
 		* ---------------------------------------------------------------
 		* Imort and prepare choices
 		* ---------------------------------------------------------------
@@ -326,12 +363,17 @@ program define ipacheckscto
 						  cond(missing(child_name) & choice_other, "missing other specify field", ///
 						  "other specify field [" + child_name + "] on row " + string(child_row) + " comes before parent field"))
 			
+			keep row type name label* choice_filter comment	
+			order row type name label* choice_filter comment
 
 			noi list row type name choice_filter comment, noobs abbrev(32) sep(0)
 			noi disp
 
+			loc check5_cnt `=_N'
+
 			save "`check5'"
 		}
+		else loc check5_cnt 0
 
 		* ---------------------------------------------------------------
 		* Check and pair up group names
@@ -339,7 +381,7 @@ program define ipacheckscto
 
 		use "`survey'", clear
 
-		keep if regexm(type, "group|repeat")
+		keep if inlist(type, "begin group", "end group", "begin repeat", "end repeat")
 
 		if `=_N' > 0 {
 
@@ -395,22 +437,29 @@ program define ipacheckscto
 
 		keep if begin_fieldname ~= end_fieldname
 
-		if `=_N' > 0 {
+		loc check6_cnt `=_N'
+
+		if `check6_cnt' > 0 {
 			noi header, checknum(6) checkmessage("GROUP NAMES")
 
 			noi disp 			"{p}The following following groups have different names and begin and end.{p_end}"			
 
+			order type begin_row begin_fieldname end_row end_fieldname
 			noi list type begin_row begin_fieldname end_row end_fieldname, noobs abbrev(32) sep(0)
 			noi disp
 
 			save "`check6'"
 		}
-
+		
 		* check 7: Repeat group vars
 		*---------------------------
 
-		if "`check6'" ~= "" {
-			use "`survey'", clear
+		use "`survey'", clear
+		count if type == "begin repeat"
+
+		loc rpt_cnt `r(N)'
+
+		if `r(N)' > 0 {
 
 			merge 1:1 row using "`grouppairs'", nogen keepusing(begin_row begin_fieldname end_row end_fieldname)
 
@@ -418,7 +467,6 @@ program define ipacheckscto
 			gen rpt_field	= 0
 			gen rpt_group 	= ""
 			getrow if  type == "begin repeat", loc (indexes)
-			* set trace on
 			foreach index in `indexes' {
 				loc groupname 			= begin_fieldname[`index']
 
@@ -427,7 +475,6 @@ program define ipacheckscto
 				replace rpt_group 	= cond(missing(rpt_group), "`groupname'", rpt_group + "/" + "`groupname'") ///
 										  in  `index'/`lastrow'
 			}
-
 
 			* foreach repeat group var, check if it was used outside the repeat group
 			levelsof name if rpt_field, loc (rvars) clean
@@ -466,11 +513,12 @@ program define ipacheckscto
 				}
 
 			}
-
+			
 			* check for inappropraite use of syntax
 			gen rpt_flag 	= 0
 			gen rpt_flagvar = "/"
 			gen rpt_flagcol	= "/"
+			gen sheet 		= "/"
 
 			#d;
 			unab cols:
@@ -493,19 +541,13 @@ program define ipacheckscto
 						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'" 
 						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
 						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
+						replace sheet = sheet + "survey/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
 				}				
 
 			}
 
-			keep row type name label rpt_flag rpt_flagvar rpt_flagcol
-
-			keep if rpt_flag
-
-			gen sheet = "survey"
-
 			save "`check7'"
-
-
+			
 			* import and check choices sheet
 			use "`choices'", clear
 
@@ -521,35 +563,208 @@ program define ipacheckscto
 						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}")
 				}	
 			}
+
+			keep if rpt_flag
+			loc ch_cnt `=_N'
 			
+			if `ch_cnt' > 0 {
 
-
-			if `=_N' > 0 {
 				replace rpt_flagvar = itrim(trim(subinstr(rpt_flagvar, "/", " ", .)))
-				replace rpt_flagcol = itrim(trim(subinstr(rpt_flagcol, "/", " ", .)))
+					replace rpt_flagcol = itrim(trim(subinstr(rpt_flagcol, "/", " ", .)))
 
 				split rpt_flagvar
 				split rpt_flagcol
 
 				drop rpt_flagcol rpt_flagvar
 
-				ren rpt_flagcol column
-
 				reshape long rpt_flagvar rpt_flagcol, i(row) j(instance)
+				
+				* save values in locals
+				forval i = 1/`ch_cnt' {
+					loc list_name`i' 	= list_name[`i']
+					loc rpt_flagvar`i'	= rpt_flagvar[`i']
+					loc rpt_flagcol`i' 		= rpt_flagcol[`i']
+				}
+
+
+			}
+
+			* check and flag issues from choices sheet
+			use "`check7'", clear
+
+			forval i = 1/`ch_cnt' {
+
+				loc list_name 	= "`list_name`i''"
+				loc flagvar 	= "`rpt_flagvar`i''"
+				loc flagcol 	= "`rpt_flagcol`i''"
+
+				getrow if name == "`flagvar'", loc (index)
+				loc rvar_group = rpt_group[`index']
+
+				replace rpt_flag = 1 if (regexm(type, "select_one `list_name'") 	| ///
+										regexm(type, "select_multiple `list_name'")) ///
+										&  rpt_group != "`rvar_group'"
+
+				replace rpt_flagvar = rpt_flagvar + "`flagvar'/" if (regexm(type, "select_one `list_name'") 	| ///
+																	regexm(type, "select_multiple `list_name'"))  ///
+																	&  rpt_group != "`rvar_group'"
+
+
+				replace rpt_flagcol = rpt_flagcol + "`flagcol'/" if (regexm(type, "select_one `list_name'") 	| ///
+																	regexm(type, "select_multiple `list_name'"))  ///
+																	&  rpt_group != "`rvar_group'"
+
+				replace sheet = sheet + "choices/" if (regexm(type, "select_one `list_name'") 	| ///
+																	regexm(type, "select_multiple `list_name'"))  ///
+																	&  rpt_group != "`rvar_group'"
+			}
+
+			keep row sheet type name label rpt_group rpt_flag rpt_flagvar rpt_flagcol
+
+			keep if rpt_flag
+
+			save "`check7'", replace
+
+		
+			if `=_N' > 0 {
+				
+				replace rpt_flagvar = itrim(trim(subinstr(rpt_flagvar, "/", " ", .)))
+				replace rpt_flagcol = itrim(trim(subinstr(rpt_flagcol, "/", " ", .)))
+				replace sheet 		= itrim(trim(subinstr(sheet, "/", " ", .)))
+
+				split rpt_flagvar
+				split rpt_flagcol
+				split sheet
+
+				drop rpt_flagcol rpt_flagvar sheet
+
+				reshape long rpt_flagvar rpt_flagcol sheet, i(row) j(instance)
 				drop instance
 
+				drop if missing(sheet)
+
+				ren rpt_flagcol column
 				ren rpt_flagvar repeat_field
 
-				noi header, checknum(7) checkmessage("GROUP NAMES")
+				noi header, checknum(7) checkmessage("REPEAT VARIABLES")
 
 				noi disp 			"{p}The following following fields contain repeat group fields that have been used illegally.{p_end}"			
 
-				noi list row type name repeat_field column, noobs abbrev(32) sep(0)
+				order sheet row type name label* repeat_field column
+
+				noi list sheet row type name repeat_field column, noobs abbrev(32) sep(0)
 				noi disp
 
-				save "`check7'"
+				loc check7_cnt `=_N'
 
+				save "`check7'", replace
+			}
+			else loc check7_cnt 0
 
+		}
+		else loc check7_cnt 0
+
+		* check 8: choices list: Check for duplicates in choice list
+		*----------------------
+
+		use "`choices'", clear
+
+		sort list_name row
+
+		unab cols: value label*
+
+		loc i = 1
+		foreach col of varlist `cols' {
+			duplicates tag list_name `col', gen (dup_`i')
+			loc ++i
+		}
+
+		egen keep = rowtotal(dup_*) 
+
+		drop if !keep
+		
+		loc i = 1
+		foreach col of varlist `cols' {
+			count if dup_`i'
+			loc col`i'_cnt `r(N)'
+			if `col`i'_cnt' > 0 {
+				getrow if dup_`i', loc (col`i')
+				loc col`i' = subinstr(trim(itrim("`col`i''")), " ", ",", .)
+			}
+			loc ++i
+		}
+
+		if `=_N' > 0 {
+			noi header, checknum(8) checkmessage("DUPLICATES IN CHOICES")
+
+			noi disp "{p}The following following choice list contain duplicates.{p_end}"
+
+			keep row value list_name label*
+			order row value list_name label*
+			noi list row list_name value label*, noobs abbrev(32) sepby(list_name)
+
+			loc check8_cnt `=_N'
+
+			save "`check8'"
+		} 
+
+		* export data
+		* -----------
+
+		if "`outfile'" ~= "" {
+
+			use "`summary'", clear
+
+			* replace number of languages
+			replace value = "`labcount'" in 8
+			loc  summ_cols ""
+			
+			forval i = 0/8 {
+
+				if `i' == 7 & `rpt_cnt' == 0 {
+					replace comment = "no repeat groups" in 23
+					loc summ_cols "`summ_cols' -1" 
+				}
+
+				else if `check`i'_cnt' == 0 {
+					replace comment = "no issues identified" in `=16+`i'' 
+					loc summ_cols "`summ_cols' 0"
+				}
+				else {
+					replace comment = "`check`i'_cnt' issues identified" in `=16+`i''
+					loc summ_cols "`summ_cols' 1"
+				}
+
+				loc exp_name`i' = field[`=16+`i'']
+
+			}
+
+			loc summ_cols = subinstr(trim(itrim("`summ_cols'")), " ", ",", .)
+			
+			* export and format summary sheet
+				export excel using "`outfile'", sheet("summary") replace cell(B1)
+				gen _a = "", before(field)
+				mata: adjust_column_width("`outfile'", "summary")
+				mata: format_summary("`outfile'", "summary", (`summ_cols'))
+				
+
+			* export remaining sheets
+		
+			forval i = 0/8 {
+				if `check`i'_cnt' > 0 {
+					use "`check`i''", clear
+					export excel using "`outfile'", sheet("`exp_name`i''") first(var)
+					mata: adjust_column_width("`outfile'", "`exp_name`i''")
+					mata: add_borders("`outfile'", "`exp_name`i''")
+				}
+			}
+
+			* add color flags to check 8
+			if `check8_cnt' > 0 {
+				loc cols_cnt = wordcount("`cols'")
+				forval i = 1/`cols_cnt' {
+					if "`col`i''" ~= "" mata: add_flags("`outfile'", "`exp_name8'", 1 + `i', (`col`i''))
+				}
 			}
 
 		}
@@ -608,7 +823,6 @@ end
 program define getsyntax 
 
 	syntax varname, FUNCTION(string) GENerate(name)
-	* set trace on
 	getrow if regexm(`varlist', "`function'\("), loc (rows)
 	
 	gen `generate' 		= ""
@@ -630,7 +844,7 @@ program define getsyntax
 			else if "`char'" == ")" loc ++close
 			
 			if `open' == `close' {
-				replace `generate' = substr("`text'", `spos', `start') in `row'
+				replace `generate' = substr("`text'", `spos', `start' - `spos' + 1) in `row'
 				loc cont 0
 			}
 			else if `start' > `len_text' {
@@ -652,20 +866,160 @@ end
 * adjust outfile columns
 mata:
 mata clear
-void adjust_column_width(string scalar filename, string scalar sheet, real rowvector columns, real rowvector widths)
+void adjust_column_width(string scalar filename, string scalar sheetname)
 {
-class xl scalar b
+
+	class xl scalar b
+	real scalar column_width, columns, ncols, nrows, i, colmaxval
+
+	ncols = st_nvar()
+	nrows = st_nobs()
 
 	b = xl()
+
 	b.load_book(filename)
-	b.set_sheet(sheet)
+	b.set_sheet(sheetname)
 	b.set_mode("open")
 
-	for (i = 1;i <= length(columns); i++) {
-		b.set_column_width(columns[i], columns[i], widths[i])
+	for (i = 1;i <= ncols;i ++) {
+		
+		namelen = strlen(st_varname(i))		
+		collen = colmax(strlen(st_sdata(., i)))
+		
+		if (st_varname(i) == "_a") {
+			column_width = 1
+		} 
+		else if (namelen > collen) {
+			column_width = namelen + 3
+		}
+		else {
+			column_width = collen + 3
+		}
+		
+		if (column_width > 101) {
+			column_width = 101
+		}	
+		
+		b.set_column_width(i, i, column_width)
+
+		if (column_width >= 100) {
+			b.set_text_wrap((1, nrows), (i, i), "on")
+		}
+
+	}
+
+		b.close_book()
+
+}
+
+void format_summary(string scalar filename, string scalar sheetname, numeric vector colors)
+{
+
+	class xl scalar b
+
+	b = xl()
+
+	b.load_book(filename)
+	b.set_sheet(sheetname)
+	b.set_mode("open")
+
+	b.set_font_bold((2, 24), (2, 2), "on")
+	b.set_font_bold((15, 15), (2, 4), "on")
+
+	b.set_font_italic((4, 11), (2, 2), "on")
+	b.set_font_italic((16, 24), (2, 2), "on")
+
+	b.set_sheet_merge(sheetname, (2, 2), (2, 3))
+	b.set_sheet_merge(sheetname, (13, 13), (2, 4))
+
+	b.set_font((2, 2), (2, 2), "calibri", 14)
+	b.set_font((13, 13), (2, 2), "calibri", 14)
+
+	b.set_horizontal_align((2, 2), (2, 3), "center")
+	b.set_horizontal_align((13, 13), (2, 3), "center")
+
+	b.set_row_height(3, 3, 10)
+	b.set_row_height(12, 12, 10)
+	b.set_row_height(14, 14, 10)
+
+	b.set_left_border((4, 11), (2, 4), "thin")
+	b.set_left_border((15, 24), (2, 5), "thin")
+
+	b.set_top_border((4, 4), (2, 3), "thin")
+	b.set_top_border((15, 16), (2, 4), "thin")
+
+	b.set_bottom_border((11, 11), (2, 3), "thin")
+	b.set_bottom_border((24, 24), (2, 4), "thin")
+
+
+	encrypted = st_sdata(10, "value")
+	if (encrypted == "No") {
+		b.set_fill_pattern(10, 3, "solid", "lightpink")
+	} 
+
+	for (i = 1;i <= 9;i ++) {
+		if (colors[i] == -1) {
+			b.set_fill_pattern(15 + i, 4, "solid", "lightyellow")
+		}
+		else if (colors[i] == 0) {
+			b.set_fill_pattern(15 + i, 4, "solid", "lightgreen")
+		}
+		else {
+			b.set_fill_pattern(15 + i, 4, "solid", "lightpink")
+		}
 	}
 
 	b.close_book()
 
 }
+
+void add_borders(string scalar filename, string scalar sheetname)
+{
+	class xl scalar b
+	real scalar ncols, nrows
+
+	b = xl()
+
+	b.load_book(filename)
+	b.set_sheet(sheetname)
+	b.set_mode("open")
+
+	ncols = st_nvar()
+	nrows = st_nobs() + 1
+
+	for (i = 1;i <= ncols; i++) {
+		b.set_font_bold((1, 1), (1, ncols), "on")
+		b.set_bottom_border((1, 1), (1, ncols), "thin")
+		b.set_bottom_border((nrows, nrows), (1, ncols), "thin")
+		b.set_right_border((1, nrows), (ncols, ncols), "thin")
+	}
+
+	b.close_book()
+
+}
+
+void add_flags(string scalar filename, string scalar sheetname, numeric scalar column, numeric vector rows) 
+{
+	class xl scalar b
+	real scalar ncols, nrows
+
+	b = xl()
+
+	b.load_book(filename)
+	b.set_sheet(sheetname)
+	b.set_mode("open")
+
+	ncols = st_nvar()
+	nrows = st_nobs() + 1
+
+	for (i = 1;i <= length(rows);i ++) {
+		b.set_fill_pattern(rows[i] + 1, column, "solid", "lightpink")
+	}
+
+	b.close_book()
+}
+
 end
+
+
+
