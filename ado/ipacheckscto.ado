@@ -320,14 +320,15 @@ program define ipacheckscto
 		*-------------------------------------
 
 		use "`survey'", clear
+		gen choice_other = 0
 		if wordcount("`other_list'") > 0 {
 
 			* mark all fields using choices with other specify
-			gen choice_other = 0
 			foreach item in `other_list' {
 				replace choice_other = 1 if word(type, 2) == "`item'" & regexm(type, "^(select_one)|^(select_multiple)")
 			}
 		}
+
 
 		* flag fields with other specify
 		keep row type name label relevance choice_filter choice_other
@@ -338,13 +339,15 @@ program define ipacheckscto
 		
 		getrow if choice_other, loc (indexes)
 		
-		foreach index of numlist `indexes' {
-			
-			loc parent = name[`index']
-			getrow if regexm(relevance, "{`parent'}") & regexm(relevance, "`other'"), loc(child_index)
-			if "`child_index'" ~= "" {	
-				replace child_name = name[`child_index'] in `index'
-				replace child_row = row[`child_index'] in `index'
+		if "`indexes'" ~= "" {
+			foreach index of numlist `indexes' {
+				
+				loc parent = name[`index']
+				getrow if regexm(relevance, "{`parent'}") & regexm(relevance, "`other'"), loc(child_index)
+				if "`child_index'" ~= "" {	
+					replace child_name = name[`child_index'] in `index'
+					replace child_row = row[`child_index'] in `index'
+				}
 			}
 		}
 
@@ -706,7 +709,8 @@ program define ipacheckscto
 			loc check8_cnt `=_N'
 
 			save "`check8'"
-		} 
+		}
+		else loc check8_cnt 0 
 
 		* export data
 		* -----------
