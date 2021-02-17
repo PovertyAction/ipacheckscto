@@ -535,10 +535,11 @@ program define ipacheckscto
 				"
 				;
 			#d cr
-			
+
 			foreach var of varlist appearance constraint relevance calculation repeat_count {
 				
 				replace `var' = subinstr(`var', "$", "#", .)
+				replace `var' = subinstr(`var', char(34), char(39), .)
 
 				* check for syntax that are used in the program
 				foreach func in `funcs' {
@@ -579,6 +580,7 @@ program define ipacheckscto
 			foreach var of varlist `cols' {
 			
 				foreach rvar in `rvars' {
+
 					levelsof rpt_group if name == "`rvar'", loc(rvar_group) clean 
 						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'" 
 						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
@@ -587,7 +589,7 @@ program define ipacheckscto
 				}				
 
 			}
-
+			
 			save "`check7'"
 			
 			* import and check choices sheet
