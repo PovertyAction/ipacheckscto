@@ -6,10 +6,6 @@
 	** checks for errors that cannot be detected by scto server or 
 	** for compliance with IPA standards
 
-	******////
-		* check for situations of multiple Languages
-		* check for situations of double
-
 version 14.0
 program define ipacheckscto
 	syntax using/ [, OUTfile(str) OTHer(numlist max = 1) replace]
@@ -28,7 +24,7 @@ program define ipacheckscto
 		* add file extension if needed
 		if !regexm("`using'", "\.xlsx|\.xls") loc using "`using'.xlsx"
 
-		* set file
+		* set export file
 		if `export' {
 			* include .xlsx extension by default if not included in filename
 			if !regexm("`outfile'", "\.xlsx|\.xls") loc outfile "`outfile'.xlsx"
@@ -49,6 +45,27 @@ program define ipacheckscto
 
 		* save filenames in local
 		if `export' loc filename = substr("`outfile'", -strpos(reverse(subinstr("`outfile'", "\", "/", .)), "/") + 1, .)
+
+		* save checks and descriptions in locals to allow for easy updates
+
+		loc checkname0 "0. recommended vars"
+		loc checkdesc0 "Check if recommeded fields not included in survey"
+		loc checkname1 "1. var length"
+		loc checkdesc1 "Check if length of fields is > 22 chars"
+		loc checkname2 "2. disabled, read only"
+		loc checkdesc2 "Checks for disabled or read only fields"
+		loc checkname3 "3. field requirements"
+		loc checkdesc3 "Checks for non-required fields and required note fields"
+		loc checkname4 "4. constraint"
+		loc checkdesc4 "Check that numeric fields are constraint"
+		loc checkname5 "5. other specify"
+		loc checkdesc5 "Check that or_other is not used and manual osp fields are specified"
+		loc checkname6 "6. group names"
+		loc checkdesc6 "Check that group and repeat gropu names match in begin & end repeat"
+		loc checkname7 "7. repeat vars"
+		loc checkdesc7 "Check that fields in repeat group are properly suffixed"
+		loc checkname8 "8. choices"
+		loc checkdesc8 "Check for duplicates in choices list"
 
 		* import information about xls form
 		if `export' {
@@ -85,16 +102,16 @@ program define ipacheckscto
 			post `summ' ("Check Summary") 	("") ("")
 			post `summ' ("") 				("") ("")
 
-			post `summ' ("check") 					("description")															("result")
-			post `summ' ("0. recommended vars") 	("Check if recommeded fields not included in survey") 					("")	
-			post `summ' ("1. var length") 			("Check if length of fields is > 22 chars") 							("")
-			post `summ' ("2. disabled, read only") 	("Checks for disabled or read only fields") 							("")
-			post `summ' ("3. field requirements") 	("Checks for non-required fields and required note fields") 			("")
-			post `summ' ("4. constraint") 			("Check that numeric fields are constraint") 							("")
-			post `summ' ("5. other specify") 		("Check that or_other is not used and manual osp fields are specified") ("")
-			post `summ' ("6. group names") 			("Check that group and repeat gropu names match in begin & end repeat") ("")
-			post `summ' ("7. repeat vars") 			("Check that fields in repeat group are properly suffixed") 			("")
-			post `summ' ("8. choices")	 			("Check for duplicates in choices list")					 			("")
+			post `summ' ("check") 			("description")		("result")
+			post `summ' ("`checkname0'") 	("`checkdesc0'") 	("")	
+			post `summ' ("`checkname1'") 	("`checkdesc1'") 	("")
+			post `summ' ("`checkname2'") 	("`checkdesc2'") 	("")
+			post `summ' ("`checkname3'") 	("`checkdesc3'") 	("")
+			post `summ' ("`checkname4'") 	("`checkdesc4'") 	("")
+			post `summ' ("`checkname5'") 	("`checkdesc5'") 	("")
+			post `summ' ("`checkname6'") 	("`checkdesc6'") 	("")
+			post `summ' ("`checkname7'") 	("`checkdesc7'") 	("")
+			post `summ' ("`checkname8'")	("`checkdesc8'")	("")
 
 			postclose `summ'
 
@@ -149,27 +166,31 @@ program define ipacheckscto
 		
 		postclose `ch0'
 
+		noi header, checkname("`checkname0'") checkdesc("`checkdesc0'") 		
+
 		use "`check0'", clear
 
 		loc check0_cnt `=_N'
+	
 		
 		if `check0_cnt' > 0 {
 			
-			noi header, checknum(0) checkmessage("RECOMMENDED FIELDS ARE MISSING OR DISABLED") 
-			
 			noi disp  	"{p}The following fields are missing or disabled. Please note that these field are " ///
-						"required for IPA Data Quality Checks{p_end}"
+					"required for IPA Data Quality Checks{p_end}"
 			noi disp
-			
+
 			noi list, noobs abbrev(32) sep(0) table
 
 			noi disp 
-			noi disp
 			
 		}
+		else noi disp "no issues identified"
+
 
 		* Check 1: Check that variable lengths do not exceed 22 chars
 		* -----------------------------------------------------------
+		
+		noi header, checkname("`checkname1'") checkdesc("`checkdesc1'")
 
 		use "`survey'", clear
 		keep if length(name) > 22
@@ -177,8 +198,6 @@ program define ipacheckscto
 		loc check1_cnt `=_N'
 		
 		if `check1_cnt' > 0 {
-			
-			noi header, checknum(1) checkmessage("LONG FIELD NAMES")
 
 			noi disp 			"{p}The following fields have names with character length greater than 22.{p_end}"
 			noi disp
@@ -194,17 +213,19 @@ program define ipacheckscto
 			noi disp
 			
 		}
+		else noi disp "no issues identified"
 			
 		* Check 2: Check for disabled field and readonly field
 		* ---------------------------------
 		
+		noi header, checkname("`checkname2'") checkdesc("`checkdesc2'")
+
 		use "`survey'", clear
 		keep if regexm(lower(disabled), "yes") | regexm(lower(readonly), "yes") 
 
 		loc check2_cnt `=_N'
 		
 		if `check2_cnt' > 0 {
-			noi header, checknum(2) checkmessage("DISABLED & READ ONLY FIELDS")
 		
 			noi disp 			"{p}The following fields have been disabled.{p_end}"
 			noi disp
@@ -217,6 +238,7 @@ program define ipacheckscto
 			
 			save "`check2'"
 		}
+		else noi disp "no issues identified"
 		
 		* Check 3: Check requirement settings. Flag the following:
 			* field is not required & is ("integer|text|date|time|select")
@@ -225,14 +247,17 @@ program define ipacheckscto
 			* field is required & has appearance type label
 		* ----------------------------------
 		
+		noi header, checkname("`checkname3'") checkdesc("`checkdesc3'")
+
 		use "`survey'", clear
-		keep if (lower(required) ~= "yes" & regexm(type, "integer|(text)$|date|time|select_") & lower(appearance) ~= "label") | ///
+		keep if (lower(required) ~= "yes" & ///
+				(regexm(lower(type), "^(select_)|^(date)") | inlist(lower(type), "integer", "text", "time", "audio", "video", "file", "image")) ///
+				& lower(appearance) ~= "label") | ///
 				(lower(required) == "yes" & (type == "note" | lower(readonly) == "yes"))
 
 		loc check3_cnt `=_N'
 
 		if `check3_cnt' > 0 {
-			noi header, checknum(3) checkmessage("FIELD REQUIREMENTS")
 
 			noi disp 			"{p}The following fields have issues with requirement.{p_end}"
 
@@ -250,12 +275,15 @@ program define ipacheckscto
 			save "`check3'"
 
 		}
+		else noi disp "no issues identified"
 
 		* Check 4: Constraint Messages
 			* check that numeric fields are constraint
 			* check that text fields are constraint if using appearance type numbers, numbers_phone
 			* check that constrained fields have constraint messages
 		* ----------------------------
+
+		noi header, checkname("`checkname4'") checkdesc("`checkdesc4'")
 
 		use "`survey'", clear
 
@@ -270,8 +298,6 @@ program define ipacheckscto
 		loc check4_cnt `=_N'
 
 		if `check4_cnt' > 0 {
-
-			noi header, checknum(4) checkmessage("CONSTRAINT")
 
 			noi disp 			"{p}The following fields are missing constraint or constraint message.{p_end}"
 
@@ -289,6 +315,7 @@ program define ipacheckscto
 			save "`check4'"
 
 		}
+		else noi disp "no issues identified"
 		
 		* ---------------------------------------------------------------
 		* Imort and prepare choices
@@ -318,6 +345,8 @@ program define ipacheckscto
 			* check that or_other is not used with select_one | select_multiple
 			* check that fields using choices with other specify have defined an osp field
 		*-------------------------------------
+
+		noi header, checkname("`checkname5'") checkdesc("`checkdesc5'")
 
 		use "`survey'", clear
 		gen choice_other = 0
@@ -356,8 +385,6 @@ program define ipacheckscto
 				(!missing(child_name) & (child_row < row) & choice_other)
 
 		if `=_N' > 0 {
-			
-			noi header, checknum(5) checkmessage("OTHER SPECIFY")
 
 			noi disp 			"{p}The following fields have missing other specify fields or use the or_other syntax.{p_end}"
 
@@ -376,7 +403,10 @@ program define ipacheckscto
 
 			save "`check5'"
 		}
-		else loc check5_cnt 0
+		else {
+			loc check5_cnt 0
+			noi disp "no issues identified"
+		}
 
 		* ---------------------------------------------------------------
 		* Check and pair up group names
@@ -438,12 +468,13 @@ program define ipacheckscto
 		* check 6: check group names
 		*----------------------------
 
+		noi header, checkname("`checkname6'") checkdesc("`checkdesc6'")
+
 		keep if begin_fieldname ~= end_fieldname
 
 		loc check6_cnt `=_N'
 
 		if `check6_cnt' > 0 {
-			noi header, checknum(6) checkmessage("GROUP NAMES")
 
 			noi disp 			"{p}The following following groups have different names and begin and end.{p_end}"			
 
@@ -453,9 +484,12 @@ program define ipacheckscto
 
 			save "`check6'"
 		}
+		else noi disp "no issues identified"
 		
 		* check 7: Repeat group vars
 		*---------------------------
+
+		noi header, checkname("`checkname7'") checkdesc("`checkdesc7'")
 
 		use "`survey'", clear
 		count if type == "begin repeat"
@@ -649,8 +683,6 @@ program define ipacheckscto
 				ren rpt_flagcol column
 				ren rpt_flagvar repeat_field
 
-				noi header, checknum(7) checkmessage("REPEAT VARIABLES")
-
 				noi disp 			"{p}The following following fields contain repeat group fields that have been used illegally.{p_end}"			
 
 				order sheet row type name label* repeat_field column
@@ -662,13 +694,20 @@ program define ipacheckscto
 
 				save "`check7'", replace
 			}
-			else loc check7_cnt 0
-
+			else {
+				loc check7_cnt 0
+				noi disp "no issues identified"
+			}
 		}
-		else loc check7_cnt 0
+		else {
+			loc check7_cnt 0
+			noi disp "no repeat groups"
+		}
 
 		* check 8: choices list: Check for duplicates in choice list
 		*----------------------
+
+		noi header, checkname("`checkname8'") checkdesc("`checkdesc8'")
 
 		use "`choices'", clear
 
@@ -698,7 +737,6 @@ program define ipacheckscto
 		}
 
 		if `=_N' > 0 {
-			noi header, checknum(8) checkmessage("DUPLICATES IN CHOICES")
 
 			noi disp "{p}The following following choice list contain duplicates.{p_end}"
 
@@ -710,7 +748,10 @@ program define ipacheckscto
 
 			save "`check8'"
 		}
-		else loc check8_cnt 0 
+		else {
+			loc check8_cnt 0
+			noi disp "no issues identified"
+		} 
 
 		* export data
 		* -----------
@@ -803,10 +844,12 @@ end
 
 * program to display headers for each check
 program define header
-	syntax, checknum(integer) checkmessage(string) [main]
+	syntax, checkname(string) checkdesc(string) [main]
 		* if main is specified use 2 lines of stars
 		noi disp "{hline}"
-		noi disp "CHECK #`checknum':" _column(15) " `checkmessage'"
+		loc checkname = upper("`checkname'")
+		noi disp "CHECK #`checkname'"
+		noi disp "`checkdesc'"
 		noi disp "{hline}"
 		noi disp
 end
