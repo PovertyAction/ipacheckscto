@@ -360,7 +360,7 @@ program define ipacheckscto
 
 
 		* flag fields with other specify
-		keep row type name label relevance choice_filter choice_other
+		keep row type name label* relevance choice_filter choice_other
 		gen child_index = ""
 		gen child_name 	= ""
 		gen child_row 	= .
