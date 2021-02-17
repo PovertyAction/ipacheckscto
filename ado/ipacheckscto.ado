@@ -461,7 +461,7 @@ program define ipacheckscto
 			}
 
 			keep if regexm(type, "^(begin)")
-			keep row type name label begin_row begin_fieldname end_row end_fieldname
+			keep row type name label* begin_row begin_fieldname end_row end_fieldname
 			save "`grouppairs'"
 		}
 
@@ -470,21 +470,26 @@ program define ipacheckscto
 
 		noi header, checkname("`checkname6'") checkdesc("`checkdesc6'")
 
-		keep if begin_fieldname ~= end_fieldname
+		count if inlist(type, "begin group", "end group", "begin repeat", "end repeat")
 
-		loc check6_cnt `=_N'
+		if `r(N)' > 0 {
+			keep if begin_fieldname ~= end_fieldname
 
-		if `check6_cnt' > 0 {
+			loc check6_cnt `=_N'
 
-			noi disp 			"{p}The following following groups have different names and begin and end.{p_end}"			
+			if `check6_cnt' > 0 {
 
-			order type begin_row begin_fieldname end_row end_fieldname
-			noi list type begin_row begin_fieldname end_row end_fieldname, noobs abbrev(32) sep(0)
-			noi disp
+				noi disp 			"{p}The following following groups have different names and begin and end.{p_end}"			
 
-			save "`check6'"
+				order type begin_row begin_fieldname end_row end_fieldname
+				noi list type begin_row begin_fieldname end_row end_fieldname, noobs abbrev(32) sep(0)
+				noi disp
+
+				save "`check6'"
+			}
+			else noi disp "no issues identified"
+
 		}
-		else noi disp "no issues identified"
 		
 		* check 7: Repeat group vars
 		*---------------------------
@@ -656,7 +661,7 @@ program define ipacheckscto
 																	&  rpt_group != "`rvar_group'"
 			}
 
-			keep row sheet type name label rpt_group rpt_flag rpt_flagvar rpt_flagcol
+			keep row sheet type name label* rpt_group rpt_flag rpt_flagvar rpt_flagcol
 
 			keep if rpt_flag
 
