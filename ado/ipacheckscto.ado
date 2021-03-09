@@ -1,5 +1,5 @@
-*! version 1.1
-*! Ishmail Azindoo Baako (IPA) February, 2018
+*! version 1.2
+*! Ishmail Azindoo Baako (IPA) March, 2021 
 
 * Stata program to review SurveyCTO xls form and export issues to an excel sheet
 * This program checks for the following type of issues:
@@ -8,282 +8,343 @@
 
 version 14.0
 program define ipacheckscto
-	syntax using/ [, OUTfile(str) OTHer(numlist max = 1) replace]
+	#d;
+	syntax using/ 
+				[, 
+				OUTfile(str) 
+				OTHer(numlist max = 1) 
+				DONTKnow(numlist max = 1) 
+				REFuse(numlist max = 1)
+				replace
+				]
+			;
+	#d cr
 	
 	qui {
 
-		tempname  summ ch0
+		tempname  summ_hand chk1_hand
 		tempfile  survey choices repeat repeat_long grouppairs
-		tempfile  summary check0 check1 check2 check3 check4 check5 check6 check7 check8
+		tempfile  summary chk1 chk2 chk3 chk4 chk5 chk6 chk7 chk8 chk9 chk10
 
-		* add dummies for exporting data
+		* set dummy for exporting to excel
 
 			if "`outfile'" ~= "" 	loc export 1
 			else 					loc export 0 
 
 		* add file extension if needed
-		if !regexm("`using'", "\.xlsx|\.xls") loc using "`using'.xlsx"
+		if !regexm("`using'", "\.xlsx$|\.xls$") loc using "`using'.xlsx"
 
 		* set export file
 		if `export' {
 			* include .xlsx extension by default if not included in filename
-			if !regexm("`outfile'", "\.xlsx|\.xls") loc outfile "`outfile'.xlsx"
+			if !regexm("`outfile'", "\.xlsx$|\.xls$") loc outfile "`outfile'.xlsx"
 			* check that use didnt specify using as outfile
 			if "`using'" == "`outfile'" {
 				disp as err "options using and outfile cannot have the same {help filename:filename}"
 				ex 602
 			} 
+
 			* check if file exist and warn user
 			cap confirm file "`outfile'"
 			if !_rc & "`replace'" == "" {
-				noi disp as err "file `outfile' already exist. Specify replace to replace file"  
+				disp as err "file `outfile' already exist. Specify replace to replace file"  
 				ex 602
 			}
-			 * Remove old file 
+			
+			* Remove old outfile. This is to minimize errors when exporting
 			else if !_rc & "`replace'" ~= "" cap rm "`outfile'"
 		}
 
 		* save filenames in local
-		if `export' loc filename = substr("`outfile'", -strpos(reverse(subinstr("`outfile'", "\", "/", .)), "/") + 1, .)
+		if `export' loc filename = substr("`using'", -strpos(reverse(subinstr("`using'", "\", "/", .)), "/") + 1, .)
 
 		* save checks and descriptions in locals to allow for easy updates
 
-		loc checkname0 "0. recommended vars"
-		loc checkdesc0 "Check if recommeded fields not included in survey"
-		loc checkname1 "1. var length"
-		loc checkdesc1 "Check if length of fields is > 22 chars"
-		loc checkname2 "2. disabled, read only"
-		loc checkdesc2 "Checks for disabled or read only fields"
-		loc checkname3 "3. field requirements"
-		loc checkdesc3 "Checks for non-required fields and required note fields"
-		loc checkname4 "4. constraint"
-		loc checkdesc4 "Check that numeric fields are constraint"
-		loc checkname5 "5. other specify"
-		loc checkdesc5 "Check that or_other is not used and manual osp fields are specified"
-		loc checkname6 "6. group names"
-		loc checkdesc6 "Check that group and repeat gropu names match in begin & end repeat"
-		loc checkname7 "7. repeat vars"
-		loc checkdesc7 "Check that fields in repeat group are properly suffixed"
-		loc checkname8 "8. choices"
-		loc checkdesc8 "Check for duplicates in choices list"
+		loc chkname1 	"1. recommended fields"
+		loc chkdesc1 	"Display status of recommended/meta-data fields in XLS form"
+		loc chkname2 	"2. field names"
+		loc chkdesc2 	"Flag issues in field names"
+		loc chkname3 	"3. disabled, read only"
+		loc chkdesc3 	"Flag fields that are disabled or marked as read only"
+		loc chkname4 	"4. field requirements"
+		loc chkdesc4 	"Flag fields with various requirement issues"
+		loc chkname5 	"5. constraint"
+		loc chkdesc5 	"Flag fields with constraint issues"
+		loc chkname6 	"6. other specify"
+		loc chkdesc6 	"Flag for issues with other specify"
+		loc chkname7 	"7. dont know, refuse"
+		loc chkdesc7 	"Flag field that do not allow for don't know and refuse to answer"
+		loc chkname8 	"8. group names"
+		loc chkdesc8 	"Flag groups with mismatch in group names at begin & end"
+		loc chkname9 	"9. repeat vars"
+		loc chkdesc9 	"Flag illegal use of repeat fields"
+		loc chkname10 	"10. choices"
+		loc chkdesc10 	"Flag duplicates or missing values/labels in choices"
 
-		* import information about xls form
-		if `export' {
-			import	excel using "`using'", sh("settings") first allstr clear
-		
-			postfile `summ' str23 field str100 (value comment) using "`summary'"
-
-			* populate information from settings sheet into summary dataset
-
-			post `summ' ("") 				("") 					("")
-			post `summ' ("Form Details") 	("") 					("")
-			post `summ' ("") 				("") 					("")
-			post `summ' ("filename") 		("`filename'") 			("")
-			post `summ' ("Form Title") 		("`=form_title[1]'") 	("")
-			
-			post `summ' ("Form ID") 				("`=form_id[1]'") 			("")
-			post `summ' ("Form Definition Version") ("`=version[1]'") 			("")
-
-			post `summ' ("Number of Languages") 	("") 						("")
-			post `summ' ("Default Language") 		("`=default_language[1]'") 	("")
-
-			if "`=public_key[1]'" ~= "" loc encrypted "Yes"
-			else 						loc encrypted "No"
-
-			post `summ' ("Form Encrypted") ("`encrypted'") ("")
-
-			if "`=submission_url[1]'" ~= "" loc suburl 	"`=submission_url[1]'"
-			else 							loc suburl 	"None"
-
-			post `summ' ("Submission URL") ("`suburl'") ("")
-
-			* populate names and extra text for other inputs
-			post `summ' ("") 				("") ("")
-			post `summ' ("Check Summary") 	("") ("")
-			post `summ' ("") 				("") ("")
-
-			post `summ' ("check") 			("description")		("result")
-			post `summ' ("`checkname0'") 	("`checkdesc0'") 	("")	
-			post `summ' ("`checkname1'") 	("`checkdesc1'") 	("")
-			post `summ' ("`checkname2'") 	("`checkdesc2'") 	("")
-			post `summ' ("`checkname3'") 	("`checkdesc3'") 	("")
-			post `summ' ("`checkname4'") 	("`checkdesc4'") 	("")
-			post `summ' ("`checkname5'") 	("`checkdesc5'") 	("")
-			post `summ' ("`checkname6'") 	("`checkdesc6'") 	("")
-			post `summ' ("`checkname7'") 	("`checkdesc7'") 	("")
-			post `summ' ("`checkname8'")	("`checkdesc8'")	("")
-
-			postclose `summ'
-
-		}
-		
-		* Import Survey sheet
-		import 	excel using "`using'", sheet("survey") first allstr clear 
-
-		* Prepare import data by removing unneeded variables and observations 
-		* and trimming vars
+		* import & prep settings sheet
+		import	excel using "`using'", sh("settings") first allstr clear
 		prep_data
+		
+		postfile `summ_hand' str50 (field) str100 (value comment) using "`summary'"
+
+		* populate information from settings sheet into summary dataset
+
+		post `summ_hand' ("") 				("") 					("")
+		post `summ_hand' ("Form Details") 	("") 					("")
+		post `summ_hand' ("") 				("") 					("")
+		post `summ_hand' ("filename") 		("`filename'") 			("")
+
+		loc formtitle 	 "`=form_title[1]'"
+		post `summ_hand' ("Form Title") 	("`formtitle'") 		("")
+		
+		loc formid       "`=form_id[1]'"
+		post `summ_hand' ("Form ID") 				 ("`formid'") 	("")
+
+		loc formdef      "`=version[1]'"
+		post `summ_hand' ("Form Definition Version") ("`formdef'") 	("")
+
+		post `summ_hand' ("Number of Languages") 	("") 				("")
+
+		loc default_lang "`=default_language[1]'"
+		post `summ_hand' ("Default Language") 		("`default_lang'") 	("")
+
+		if "`=public_key[1]'" ~= "" loc encrypted "Yes"
+		else 						loc encrypted "No"
+
+		post `summ_hand' ("Form Encrypted") 					("`encrypted'") ("")
+		post `summ_hand' ("Number of Publishable fields")	("")			("")
+
+		if "`=submission_url[1]'" ~= "" loc suburl 	"`=submission_url[1]'"
+		else 							loc suburl 	"None"
+
+		post `summ_hand' ("Submission URL") ("`suburl'") ("")
+
+		* populate names and extra text for other inputs
+		post `summ_hand' ("") 				("") ("")
+		post `summ_hand' ("Check Summary") 	("") ("")
+		post `summ_hand' ("") 				("") ("")
+
+		post `summ_hand' ("check") 			("description")		("result")
+		post `summ_hand' ("`chkname1'") 	("`chkdesc1'") 		("")	
+		post `summ_hand' ("`chkname2'") 	("`chkdesc2'") 		("")
+		post `summ_hand' ("`chkname3'") 	("`chkdesc3'") 		("")
+		post `summ_hand' ("`chkname4'") 	("`chkdesc4'") 		("")
+		post `summ_hand' ("`chkname5'") 	("`chkdesc5'") 		("")
+		post `summ_hand' ("`chkname6'") 	("`chkdesc6'") 		("")
+		post `summ_hand' ("`chkname7'") 	("`chkdesc7'") 		("")
+		post `summ_hand' ("`chkname8'") 	("`chkdesc8'") 		("")
+		post `summ_hand' ("`chkname9'")		("`chkdesc9'")		("")
+		post `summ_hand' ("`chkname10'")	("`chkdesc10'")		("")
+
+		postclose `summ_hand'
+
+		* Import & prep Survey sheet
+		import 	excel using "`using'", sheet("survey") first allstr clear 
+		prep_data
+
+		* count number of label variables
+		unab labels : label*
+		loc lab_cnt = wordcount("`labels'")
 
 		* save survey data
 		save "`survey'"
+
+		* Display main headers
+
+		noi disp
+		noi disp
+		noi disp _dup(120) "="
+		noi disp 
+		noi disp "{ul:Form details}" 
+		noi disp 
+		noi disp "Filename" 					_column(30) ": `filename'"
+		noi disp "Form Title" 					_column(30) ": `formtitle'"
+		noi disp "Form ID" 						_column(30) ": `formid'"
+		noi disp "Form Definition Version" 		_column(30) ": `formdef'"
+		noi disp "Number of languages"			_column(30) ": `lab_cnt'"
+		noi disp "Default language"				_column(30) ": `default_lang'"
 		
-		* count number of label variables
-		unab labels: label*
-		loc labcount = wordcount("`labels'")
+		if "`encrypted'" == "Yes" {
+			noi disp "Form Encrypted"	_column(30) "Yes"
+			count if lower(publishable) == "yes"
+			loc pub_count `r(N)'
+			if `pub_cnt' > 0 noi disp "Number of Publishable fields"	_column(30) ": `pub_cnt'"
+			else 		  	 noi disp "Number of Publishable fields"	_column(30) ": {red:`pub_cnt'}"		
+		}
+		else noi disp "Form Encrypted"	_column(30) ": {red:No}"
+	
+		noi disp
+		noi disp _dup(120) "="
 		
-		* display titles
-		noi disp "{hline}"
-		noi disp "**" _column(5) "XLS REVIEW OF FILE: `using'"
-		noi disp "{hline}"
-				
-		* Check 0: Check if recommeded fields are not not included in survey
+		
+		* Check 1: Display status of recommended/meta-data fields in XLS form
 		* ----------------------------------------------------------------
-		* Auto generated starttime, endtime and duration are useful for IPA HFC Templates
-
-		count if (inlist(type, "start", "end") | inlist(calculation, "duration()")) & (lower(disabled) ~= "yes")
 		
-		postfile 	`ch0' str50 (variable disabled) str100 comment using "`check0'"
-		count if type == "start"
-		if `r(N)' == 0 post `ch0' ("starttime") ("") ("starttime field is missing")
-		else {
-			count if type == "start" & lower(disabled) == "yes" 
-			if `r(N)' > 0 post `ch0' ("starttime") ("yes") ("starttime field is disabled")
-		}
+		* Save results in new postfile
 
-		count if type == "end"
-		if `r(N)' == 0 post `ch0' ("endtime") ("") ("endtime field is missing")
-		else {
-			count if type == "end" & lower(disabled) == "yes" 
-			if `r(N)' > 0 post `ch0' ("endtime") ("yes") ("endtime field is disabled")
-		}
-	
-		count if type == "calculate" & calculation == "duration()"
-		if `r(N)' == 0 post `ch0' ("duration") ("") ("duration field is missing")
-		else {
-			count if type == "calculate" & calculation == "duration()" & lower(disabled) == "yes"
-			if `r(N)' > 0 post `ch0' ("duration") ("yes") ("duration field is disabled")
-		}
+		postfile `chk1_hand' str32 (field) str300 (description) str10 (status) str300(rows names) using "`chk1'"
+
+		* Required:
+
+		post `chk1_hand'	("") 			("") ("") ("") ("")
+		post `chk1_hand'	("Required:") 	("") ("") ("") ("")
+		post `chk1_hand'	("") 			("") ("") ("") ("")
 		
-		postclose `ch0'
+		postresult if lower(type) == "start", field(starttime) handle(`chk1_hand') ///
+			desc("Auto-records the date & time the survey was started")
 
-		noi header, checkname("`checkname0'") checkdesc("`checkdesc0'") 		
+		postresult if lower(type) == "end", field(endtime) handle(`chk1_hand') ///
+			desc("Auto-records the date & time the survey was ended")
 
-		use "`check0'", clear
+		postresult if lower(calculation) == "duration()", field(duration) handle(`chk1_hand') ///
+			desc("Auto-records the duration (in secs) of the entire survey")
 
-		loc check0_cnt `=_N'
-	
+		post `chk1_hand'	("") 				("") ("") ("") ("")
+		post `chk1_hand'	("Recommended:") 	("") ("") ("") ("")
+		post `chk1_hand'	("") 				("") ("") ("") ("")
+
+		postresult if lower(type) == "comments", field(comments) handle(`chk1_hand') ///
+			desc("Allows users to enter comments associated with any field(s)")
+
+		postresult if lower(type) == "text audit", field(text audit) handle(`chk1_hand') ///
+			desc("Auto-record meta-data about how the form was filled out")
+
+		postresult if lower(type) == "audio audit", field(audio audit) handle(`chk1_hand') ///
+			desc("Audio-record some or all survey administration (invisibly)")
+
+		postresult if lower(type) == "geopoint", field(geopoint) handle(`chk1_hand') ///
+			desc("Collects GPS coordinates using the device's built-in GPS support")
+
+		postresult if regexm(lower(type), "^sensor_statistic"), field(sensor_statistic) handle(`chk1_hand') ///
+			desc("Summarize device sensor meta-data")
+
+		postresult if regexm(lower(type), "^sensor_stream"), field(sensor_stream) handle(`chk1_hand') ///
+			desc("Capture a stream of sensor meta-data")
+
+		postclose `chk1_hand'	
+
+		noi header, checkname("`chkname1'") checkdesc("`chkdesc1'") 		
+
+		use "`chk1'", clear
+		compress
+
+		count if status == "missing"	
+		loc chk1_cnt `r(N)'	
 		
-		if `check0_cnt' > 0 {
-			
-			noi disp  	"{p}The following fields are missing or disabled. Please note that these field are " ///
-					"required for IPA Data Quality Checks{p_end}"
-			noi disp
+		noi disp
+		noi disp "{bf:Required}:"
+		noi list in 4/6, noobs abbrev(32) sep(0) table
+		noi disp
+		noi disp "{bf:Recommended}:"
+		noi list in 10/l, noobs abbrev(32) sep(0) table
 
-			noi list, noobs abbrev(32) sep(0) table
+		save "`chk1'", replace
 
-			noi disp 
-			
-		}
-		else noi disp "no issues identified"
-
-
-		* Check 1: Check that variable lengths do not exceed 22 chars
+		* Check 2: Flag issues in field names
 		* -----------------------------------------------------------
 		
-		noi header, checkname("`checkname1'") checkdesc("`checkdesc1'")
-
-		use "`survey'", clear
-		keep if length(name) > 22
-
-		loc check1_cnt `=_N'
+		noi disp
+		noi header, checkname("`chkname2'") checkdesc("`chkdesc2'")
 		
-		if `check1_cnt' > 0 {
+		use "`survey'", clear
+		gen char_length 	= length(name)
+		gen invalid_name	= regexm(name, "\.|\-")
+		
+		keep if char_length > 22 | invalid_name
 
-			noi disp 			"{p}The following fields have names with character length greater than 22.{p_end}"
-			noi disp
+		loc chk2_cnt `=_N'
+		
+		if `chk2_cnt' > 0 {
 
-			gen char_length = length(name)
-			keep row type name char_length 
+			gen issue = cond(char_length > 22 & invalid_name, "long & invalid varname", ///
+						  cond(invalid_name, "invalid varname", "long varname"))
 
-			order row type name char_length
+			keep row type name char_length issue
 
-			save "`check1'"
+			order row type name char_length issue
+
+			save "`chk2'"
 
 			noi list, noobs abbrev(32) sep(0) table
 			noi disp
 			
 		}
 		else noi disp "no issues identified"
-			
-		* Check 2: Check for disabled field and readonly field
+		
+		* Check 3: Check for disabled and readonly field
 		* ---------------------------------
 		
-		noi header, checkname("`checkname2'") checkdesc("`checkdesc2'")
+		noi disp
+		noi header, checkname("`chkname3'") checkdesc("`chkdesc3'")
 
 		use "`survey'", clear
-		keep if regexm(lower(disabled), "yes") | regexm(lower(readonly), "yes") 
+		keep if lower(disabled) == "yes" | lower(readonly) == "yes" 
 
-		loc check2_cnt `=_N'
+		loc chk3_cnt `=_N'
 		
-		if `check2_cnt' > 0 {
-		
-			noi disp 			"{p}The following fields have been disabled.{p_end}"
-			noi disp
+		if `chk3_cnt' > 0 {
 
 			keep row type name disabled readonly
-			sort row type name disabled readonly
+
+			gen issue = cond(lower(disabled) == "yes" & lower(readonly) == "yes", "disabled & readonly", ///
+						cond(lower(disabled) == "yes", "disabled", "readonly"))
+
+			sort row type name disabled readonly issue
 
 			noi list, noobs abbrev(32) sep(0)
 			noi disp
 			
-			save "`check2'"
+			save "`chk3'"
 		}
 		else noi disp "no issues identified"
 		
-		* Check 3: Check requirement settings. Flag the following:
+		* Check 4: Flag fields with various requirement issues:
 			* field is not required & is ("integer|text|date|time|select")
 			* field is required & is a note 
 			* field is required & is readonly
 			* field is required & has appearance type label
 		* ----------------------------------
-		
-		noi header, checkname("`checkname3'") checkdesc("`checkdesc3'")
 
+		noi disp
+		noi header, checkname("`chkname4'") checkdesc("`chkdesc4'")
+		
 		use "`survey'", clear
 		keep if (lower(required) ~= "yes" & ///
-				(regexm(lower(type), "^(select_)|^(date)") | inlist(lower(type), "integer", "text", "time", "audio", "video", "file", "image")) ///
+				(regexm(lower(type), "^(select_)|^(date)|^(geo)") | ///
+				inlist(lower(type), "text", "integer", "decimal", "barcode", "time", "image", "audio", "video", "file")) ///
 				& lower(appearance) ~= "label") | ///
 				(lower(required) == "yes" & (type == "note" | lower(readonly) == "yes"))
 
-		loc check3_cnt `=_N'
+		* exclude geopoint fields with a background appearance
+		drop if lower(type) == "geopoint" & regexm(lower(appearance), "background")
 
-		if `check3_cnt' > 0 {
+		loc chk4_cnt `=_N'
 
-			noi disp 			"{p}The following fields have issues with requirement.{p_end}"
+		if `chk4_cnt' > 0 {
 
-			keep row type name label* appearance readonly required
-			order row type name label* appearance readonly required
-			
 			* label each issue type
-			gen comment = 	cond(lower(required) ~= "yes" & regexm(type, "integer|(text)$|date|time|select_"), "field is not required", ///
-							cond(lower(required) == "yes" & type == "note", "required note field", ///
-								"required & read only"))
+			gen issue = cond(lower(required) == "yes" & type == "note", "required note field", ///
+						cond(lower(required) == "yes" & lower(readonly) == "yes", "required & read only", ///
+						"not required"))
+
+			keep row type name appearance readonly required issue
+			order row type name appearance readonly required issue
 			
-			noi list row type name appearance readonly required comment, noobs abbrev(32) sep(0)
+			noi list, noobs abbrev(32) sep(0)
 			noi disp
 
-			save "`check3'"
+			save "`chk4'"
 
 		}
 		else noi disp "no issues identified"
-
-		* Check 4: Constraint Messages
+		
+		* Check 5: Flag fields with constraint issues
 			* check that numeric fields are constraint
 			* check that text fields are constraint if using appearance type numbers, numbers_phone
 			* check that constrained fields have constraint messages
 		* ----------------------------
 
-		noi header, checkname("`checkname4'") checkdesc("`checkdesc4'")
+		noi header, checkname("`chkname5'") checkdesc("`chkdesc5'")
 
 		use "`survey'", clear
 
@@ -295,24 +356,22 @@ program define ipacheckscto
 				(nmcm_cnt < `mcm_cnt' & type == "text" & regexm(appearance, "numbers")) 	| ///
 				(nmcm_cnt < `mcm_cnt' & !missing(constraint)) 
 
-		loc check4_cnt `=_N'
+		loc chk5_cnt `=_N'
+		
+		if `chk5_cnt' > 0 {
 
-		if `check4_cnt' > 0 {
-
-			noi disp 			"{p}The following fields are missing constraint or constraint message.{p_end}"
-
-			keep row type name label* appearance constraint constraintmessage* nmcm_cnt
-			order row type name label* appearance constraint constraintmessage* nmcm_cnt
+			keep row type name appearance constraint constraintmessage* nmcm_cnt
+			order row type name appearance constraint constraintmessage* nmcm_cnt
 
 			* label each issue type
-			gen comment = cond(!missing(constraint) & nmcm_cnt < `mcm_cnt', "missing constraint message", "missing constraint")
+			gen issue = cond(!missing(constraint) & nmcm_cnt < `mcm_cnt', "missing constraint message", "missing constraint")
 			
-			noi list row type name appearance constraint constraintmessage* comment, noobs abbrev(32) sep(0)
+			noi list row type name appearance constraint constraintmessage*, noobs abbrev(32) sep(0)
 			noi disp
 
 			drop nmcm_cnt
 
-			save "`check4'"
+			save "`chk5'"
 
 		}
 		else noi disp "no issues identified"
@@ -332,82 +391,153 @@ program define ipacheckscto
 				drop `var'
 			}
 		}
-
+	
 		* make a list of list_name (s) with other specify
 		if "`other'" ~= "" {
 			levelsof list_name if value == "`other'", loc (other_list) clean
 		}
 
+		* make a list of list_name (s) with don't know
+		if "`dontknow'" ~= "" {
+			levelsof list_name if value == "`dontknow'", loc (dontknow_list) clean
+		}
+
+		* make a list list of list_name (s) with refuse to answer
+ 		if "`refuse'" ~= "" {
+			levelsof list_name if value == "`refuse'", loc (refuse_list) clean
+		}
+		
 		save "`choices'"
 
-
-		* check 5: or_other and other specify
+		* check 6: Flag for issues with other specify
 			* check that or_other is not used with select_one | select_multiple
 			* check that fields using choices with other specify have defined an osp field
 		*-------------------------------------
 
-		noi header, checkname("`checkname5'") checkdesc("`checkdesc5'")
+		noi header, checkname("`chkname6'") checkdesc("`chkdesc6'")
 
-		use "`survey'", clear
-		gen choice_other = 0
-		if wordcount("`other_list'") > 0 {
+		if "`other'" ~= "" {
+			use "`survey'", clear
+			gen choice_other = 0
 
 			* mark all fields using choices with other specify
-			foreach item in `other_list' {
-				replace choice_other = 1 if word(type, 2) == "`item'" & regexm(type, "^(select_one)|^(select_multiple)")
-			}
-		}
-
-
-		* flag fields with other specify
-		keep row type name label* relevance choice_filter choice_other
-		gen child_index = ""
-		gen child_name 	= ""
-		gen child_row 	= .
-
-		
-		getrow if choice_other, loc (indexes)
-		
-		if "`indexes'" ~= "" {
-			foreach index of numlist `indexes' {
-				
-				loc parent = name[`index']
-				getrow if regexm(relevance, "{`parent'}") & regexm(relevance, "`other'"), loc(child_index)
-				if "`child_index'" ~= "" {	
-					replace child_name = name[`child_index'] in `index'
-					replace child_row = row[`child_index'] in `index'
+			if wordcount("`other_list'") > 0 {
+				foreach item in `other_list' {
+					replace choice_other = 1 if word(type, 2) == "`item'" & regexm(type, "^(select_one)|^(select_multiple)")
 				}
 			}
-		}
+		
+			* flag fields with other specify
+			keep row type name relevance choice_filter choice_other
+			gen child_index = ""
+			gen child_name 	= ""
+			gen child_row 	= .
 
-		keep if (regexm(type, "or_other$") & wordcount(type) == 3) | ///
-				(missing(child_name) & choice_other) | ///
-				(!missing(child_name) & (child_row < row) & choice_other)
-
-		if `=_N' > 0 {
-
-			noi disp 			"{p}The following fields have missing other specify fields or use the or_other syntax.{p_end}"
-
-			* generate comments for each issue
-			gen comment = cond(regexm(type, "or_other$") & wordcount(type) == 3, "or_other syntax used", ///
-						  cond(missing(child_name) & choice_other, "missing other specify field", ///
-						  "other specify field [" + child_name + "] on row " + string(child_row) + " comes before parent field"))
 			
-			keep row type name label* choice_filter comment	
-			order row type name label* choice_filter comment
+			getrow if choice_other, loc (indexes)
+			
+			if "`indexes'" ~= "" {
+				foreach index of numlist `indexes' {
+					
+					loc parent = name[`index']
+					getrow if regexm(relevance, "{`parent'}") & regexm(relevance, "`other'"), loc(child_index)
+					if "`child_index'" ~= "" {	
+						replace child_name = name[`child_index'] in `index'
+						replace child_row = row[`child_index'] in `index'
+					}
+				}
+			}
 
-			noi list row type name choice_filter comment, noobs abbrev(32) sep(0)
-			noi disp
+			keep if (regexm(type, "or_other$") & wordcount(type) == 3) | ///
+					(missing(child_name) & choice_other) | ///
+					(!missing(child_name) & (child_row < row) & choice_other)
 
-			loc check5_cnt `=_N'
+			if `=_N' > 0 {
 
-			save "`check5'"
+				* generate comments for each issue
+				gen issue = cond(regexm(type, "or_other$") & wordcount(type) == 3, "or_other syntax used", ///
+							  cond(missing(child_name) & choice_other, "missing other specify field", ///
+							  "other specify field [" + child_name + "] on row " + string(child_row) + " comes before parent field"))
+				
+				keep row type name choice_filter issue	
+				order row type name choice_filter issue
+
+				noi list, noobs abbrev(32) sep(0)
+				noi disp
+
+				loc chk6_cnt `=_N'
+
+				save "`chk6'"
+			}
+			else {
+				loc chk6_cnt 0
+				noi disp "no issues identified"
+			}
+
 		}
-		else {
-			loc check5_cnt 0
-			noi disp "no issues identified"
-		}
+		else "not checked"
 
+		* check 7: Flag field that do not allow for don't know and refuse to answer
+			* check that choice list includes dk, ref for select_one | select_multiple
+			* check that integer, decimal & text fields with constraint allow 
+		* ----------------------------------------------------------------------------
+
+		noi header, checkname("`chkname7'") checkdesc("`chkdesc7'")
+
+		if "`dontknow'" ~= "" | "`refuse'" ~= "" {
+			use "`survey'", clear
+
+			* Mark select fields that include don't know
+			gen dontknow = 0
+			if wordcount("`dontknow_list'") > 0 {
+				foreach item in `dontknow_list' {
+					replace dontknow = 1 if word(type, 2) == "`item'" & regexm(type, "^(select_one)|^(select_multiple)")
+				}
+			}
+			gen refuse = 0
+			if wordcount("`refuse_list'") > 0 {
+				foreach item in `refuse_list' {
+					replace refuse = 1 if word(type, 2) == "`item'" & regexm(type, "^(select_one)|^(select_multiple)")
+				}
+			}
+
+			replace dontknow = 1 if inlist(type, "integer", "decimal", "text") & ///
+				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`dontknow'|\.=`dontknow'")
+			
+			replace refuse = 1 if inlist(type, "integer", "decimal", "text") & ///
+				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`refuse'|or\.=`refuse'")
+		
+			keep if inlist(type, "integer", "decimal", "text") | regexm(type, "^select_one|^select_multiple")
+			
+			if "`dontknow'" ~= "" & "`refuse'" ~= "" drop if dontknow & refuse
+			else if "`dontknow'" ~= "" drop if dontknow
+			else drop if refuse
+
+			drop if inlist(type, "integer", "decimal", "text") & missing(constraint)
+
+			loc chk7_cnt `=_N'
+
+			if `chk7_cnt' > 0 {
+			
+				keep row type name constraint dontknow refuse
+
+				gen issue = cond(!dontknow & !refuse, "don't know & refuse not allowed", ///
+							cond(!dontknow, "don't know not allowed", "refuse not allowed"))
+
+				drop dontknow refuse
+				order row type name constraint issue
+
+				compress
+				noi list, noobs abbrev(32) sep(0)
+				noi disp
+
+				save "`chk7'", replace
+			}
+			else noi disp "not issues identified"
+
+		}
+		else noi disp "not checked"
+		
 		* ---------------------------------------------------------------
 		* Check and pair up group names
 		* ---------------------------------------------------------------
@@ -465,37 +595,38 @@ program define ipacheckscto
 			save "`grouppairs'"
 		}
 
-		* check 6: check group names
+		* check 8: check group names
 		*----------------------------
 
-		noi header, checkname("`checkname6'") checkdesc("`checkdesc6'")
+		noi header, checkname("`chkname8'") checkdesc("`chkdesc8'")
+		
+		if `=_N' > 0 {
 
-		count if inlist(type, "begin group", "end group", "begin repeat", "end repeat")
-
-		if `r(N)' > 0 {
 			keep if begin_fieldname ~= end_fieldname
 
-			loc check6_cnt `=_N'
+			loc chk8_cnt `=_N'
 
-			if `check6_cnt' > 0 {
-
-				noi disp 			"{p}The following following groups have different names and begin and end.{p_end}"			
+			if `chk8_cnt' > 0 {
 
 				order type begin_row begin_fieldname end_row end_fieldname
 				noi list type begin_row begin_fieldname end_row end_fieldname, noobs abbrev(32) sep(0)
 				noi disp
 
-				save "`check6'"
+				save "`chk8'"
 			}
 			else noi disp "no issues identified"
 
 		}
+		else {
+			noi disp "{red: Not checked: XLS form has not groups or repeats}"
+			loc chk8_cnt 0
+		}
 		
-		* check 7: Repeat group vars
+		* check 9: Repeat group vars
 		*---------------------------
 
-		noi header, checkname("`checkname7'") checkdesc("`checkdesc7'")
-
+		noi header, checkname("`chkname9'") checkdesc("`chkdesc9'")
+		
 		use "`survey'", clear
 		count if type == "begin repeat"
 
@@ -514,14 +645,14 @@ program define ipacheckscto
 
 				getrow if row == `=end_row[`index']', loc(lastrow)
 				replace rpt_field 	= 1 in `index'/`lastrow'
-				replace rpt_group 	= cond(missing(rpt_group), "`groupname'", rpt_group + "/" + "`groupname'") ///
+				replace rpt_group 	= cond(missing(rpt_group), "/`groupname'", rpt_group + "/" + "`groupname'") ///
 										  in  `index'/`lastrow'
 			}
 
 			* foreach repeat group var, check if it was used outside the repeat group
 			levelsof name if rpt_field, loc (rvars) clean
 
-			** first reove functions that allow repeat vars
+			** first remove functions that allow repeat vars
 
 			#d;
 			loc funcs
@@ -532,6 +663,7 @@ program define ipacheckscto
 				"max"				"max-if"
 				"rank-index" 		"rank-index-if"
 				"indexed-repeat"
+				"count"				"count-if"
 				"
 				;
 			#d cr
@@ -582,15 +714,15 @@ program define ipacheckscto
 				foreach rvar in `rvars' {
 
 					levelsof rpt_group if name == "`rvar'", loc(rvar_group) clean 
-						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'" 
-						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
-						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
-						replace sheet = sheet + "survey/" if regexm(`var', "{`rvar'}") & rpt_group != "`rvar_group'"
+						replace rpt_flag 	= 1 if regexm(`var', "{`rvar'}") & !regexm(rpt_group, "`rvar_group'")
+						replace rpt_flagvar = rpt_flagvar + "`rvar'/" if regexm(`var', "{`rvar'}") & !regexm(rpt_group, "`rvar_group'")
+						replace rpt_flagcol = rpt_flagcol + "`var'/" if regexm(`var', "{`rvar'}") & !regexm(rpt_group, "`rvar_group'")
+						replace sheet = sheet + "survey/" if regexm(`var', "{`rvar'}") & !regexm(rpt_group, "`rvar_group'")
 				}				
 
 			}
 			
-			save "`check7'"
+			save "`chk9'"
 			
 			* import and check choices sheet
 			use "`choices'", clear
@@ -634,8 +766,8 @@ program define ipacheckscto
 			}
 
 			* check and flag issues from choices sheet
-			use "`check7'", clear
-
+			use "`chk9'", clear
+			
 			forval i = 1/`ch_cnt' {
 
 				loc list_name 	= "`list_name`i''"
@@ -647,27 +779,27 @@ program define ipacheckscto
 
 				replace rpt_flag = 1 if (regexm(type, "select_one `list_name'") 	| ///
 										regexm(type, "select_multiple `list_name'")) ///
-										&  rpt_group != "`rvar_group'"
+										& !regexm(rpt_group, "`rvar_group'")
 
 				replace rpt_flagvar = rpt_flagvar + "`flagvar'/" if (regexm(type, "select_one `list_name'") 	| ///
 																	regexm(type, "select_multiple `list_name'"))  ///
-																	&  rpt_group != "`rvar_group'"
+																	&  !regexm(rpt_group, "`rvar_group'")
 
 
 				replace rpt_flagcol = rpt_flagcol + "`flagcol'/" if (regexm(type, "select_one `list_name'") 	| ///
 																	regexm(type, "select_multiple `list_name'"))  ///
-																	&  rpt_group != "`rvar_group'"
+																	&  !regexm(rpt_group, "`rvar_group'")
 
 				replace sheet = sheet + "choices/" if (regexm(type, "select_one `list_name'") 	| ///
 																	regexm(type, "select_multiple `list_name'"))  ///
-																	&  rpt_group != "`rvar_group'"
+																	&  !regexm(rpt_group, "`rvar_group'")
 			}
 
-			keep row sheet type name label* rpt_group rpt_flag rpt_flagvar rpt_flagcol
+			keep row sheet type name rpt_group rpt_flag rpt_flagvar rpt_flagcol
 
 			keep if rpt_flag
 
-			save "`check7'", replace
+			save "`chk9'", replace
 
 		
 			if `=_N' > 0 {
@@ -690,75 +822,78 @@ program define ipacheckscto
 				ren rpt_flagcol column
 				ren rpt_flagvar repeat_field
 
-				noi disp 			"{p}The following following fields contain repeat group fields that have been used illegally.{p_end}"			
+				order sheet row type name repeat_field column
 
-				order sheet row type name label* repeat_field column
-
+				ren rpt_group repeat_group
 				noi list sheet row type name repeat_field column, noobs abbrev(32) sep(0)
 				noi disp
 
-				loc check7_cnt `=_N'
+				loc chk9_cnt `=_N'
 
-				save "`check7'", replace
+				save "`chk9'", replace
 			}
 			else {
-				loc check7_cnt 0
+				loc chk9_cnt 0
 				noi disp "no issues identified"
 			}
 		}
 		else {
-			loc check7_cnt 0
-			noi disp "no repeat groups"
+			loc chk9_cnt 0
+			noi disp "{red: Not checked: XLS form has no repeat groups"
 		}
-
-		* check 8: choices list: Check for duplicates in choice list
+		
+		* check 10: choices list: Check for duplicates in choice list
 		*----------------------
 
-		noi header, checkname("`checkname8'") checkdesc("`checkdesc8'")
+		noi header, checkname("`chkname10'") checkdesc("`chkdesc10'")
 
 		use "`choices'", clear
 
 		sort list_name row
+		keep list_name value label* row
 
-		unab cols: value label*
-
-		loc i = 1
-		foreach col of varlist `cols' {
-			duplicates tag list_name `col', gen (dup_`i')
-			loc ++i
-		}
-
-		egen keep = rowtotal(dup_*) 
-
-		drop if !keep
+		unab labs: label*
+		loc first_lab = word("`labs'", 1) 
 		
-		loc i = 1
-		foreach col of varlist `cols' {
-			count if dup_`i'
-			loc col`i'_cnt `r(N)'
-			if `col`i'_cnt' > 0 {
-				getrow if dup_`i', loc (col`i')
-				loc col`i' = subinstr(trim(itrim("`col`i''")), " ", ",", .)
-			}
-			loc ++i
+		save "`choices'", replace
+
+
+		* Check value column
+
+		keep list_name value `first_lab' row
+		duplicates tag list_name value, gen (dup)
+		keep if dup
+		drop dup
+		gen column = "value"
+		if "`first_lab'" ~= "" ren `first_lab' label
+		save "`chk10'", replace emptyok
+
+		* check each label column
+		foreach lab in `labs' {
+			use "`choices'", clear
+			keep list_name value `lab' row
+			duplicates tag list_name `lab', gen (dup)
+			keep if dup
+			gen column = "`lab'"
+			drop dup
+			ren `lab' label
+			append using "`chk10'"
+			save "`chk10'", replace
 		}
 
 		if `=_N' > 0 {
+			sort column list_name row
 
-			noi disp "{p}The following following choice list contain duplicates.{p_end}"
+			loc chk10_cnt `=_N'
+			
+			gen issue = cond(column == "value", "duplicate value", cond(missing(label), "missing label", "duplicate label"))
+			order list_name value label row column
+			gen seperator = list_name + "/" + issue 
+			noi list list_name value label row column issue, noobs abbrev(32) sepby(seperator)
 
-			keep row value list_name label*
-			order row value list_name label*
-			noi list row list_name value label*, noobs abbrev(32) sepby(list_name)
-
-			loc check8_cnt `=_N'
-
-			save "`check8'"
+			drop seperator
+			save "`chk10'", replace
 		}
-		else {
-			loc check8_cnt 0
-			noi disp "no issues identified"
-		} 
 
 		* export data
 		* -----------
@@ -768,31 +903,31 @@ program define ipacheckscto
 			use "`summary'", clear
 
 			* replace number of languages
-			replace value = "`labcount'" in 8
-			loc  summ_cols ""
-			
-			forval i = 0/8 {
+			replace value = "`lab_cnt'" if field == "Number of Languages"
 
-				if `i' == 7 & `rpt_cnt' == 0 {
-					replace comment = "no repeat groups" in 23
+			loc  summ_cols ""
+
+			forval i = 1/10 {
+
+				if `i' == 9 & `rpt_cnt' == 0 {
+					replace comment = "no repeat groups" in 25
 					loc summ_cols "`summ_cols' -1" 
 				}
-
-				else if `check`i'_cnt' == 0 {
+				else if `chk`i'_cnt' == 0 {
 					replace comment = "no issues identified" in `=16+`i'' 
 					loc summ_cols "`summ_cols' 0"
 				}
 				else {
-					replace comment = "`check`i'_cnt' issues identified" in `=16+`i''
+					replace comment = "`chk`i'_cnt' issues identified" in `=16+`i''
 					loc summ_cols "`summ_cols' 1"
 				}
 
 				loc exp_name`i' = field[`=16+`i'']
 
 			}
-
-			loc summ_cols = subinstr(trim(itrim("`summ_cols'")), " ", ",", .)
 			
+			loc summ_cols = subinstr(trim(itrim("`summ_cols'")), " ", ",", .)
+
 			* export and format summary sheet
 				export excel using "`outfile'", sheet("summary") replace cell(B1)
 				gen _a = "", before(field)
@@ -802,22 +937,14 @@ program define ipacheckscto
 
 			* export remaining sheets
 		
-			forval i = 0/8 {
-				if `check`i'_cnt' > 0 {
-					use "`check`i''", clear
+			forval i = 1/10 {
+				if `chk`i'_cnt' > 0 {
+					use "`chk`i''", clear
 					export excel using "`outfile'", sheet("`exp_name`i''") first(var)
 					mata: adjust_column_width("`outfile'", "`exp_name`i''")
 					mata: add_borders("`outfile'", "`exp_name`i''")
 				}
-			}
-
-			* add color flags to check 8
-			if `check8_cnt' > 0 {
-				loc cols_cnt = wordcount("`cols'")
-				forval i = 1/`cols_cnt' {
-					if "`col`i''" ~= "" mata: add_flags("`outfile'", "`exp_name8'", 1 + `i', (`col`i''))
-				}
-			}
+			}			
 
 		}
 
@@ -853,11 +980,11 @@ end
 program define header
 	syntax, checkname(string) checkdesc(string) [main]
 		* if main is specified use 2 lines of stars
-		noi disp "{hline}"
+		noi disp _dup(120) "-"
 		loc checkname = upper("`checkname'")
 		noi disp "CHECK #`checkname'"
 		noi disp "`checkdesc'"
-		noi disp "{hline}"
+		noi disp _dup(120) "-"
 		noi disp
 end
 
@@ -915,6 +1042,23 @@ program define getsyntax
 
 end
 
+
+* program for check 1: Required fields
+program define postresult
+
+	syntax if, field(string) handle(string) desc(string)
+	count `if'
+	loc field_cnt `r(N)'
+	loc status = cond(`field_cnt' == 0, "missing", "included")
+	if `field_cnt' > 0 {
+		getrow `if', loc (rows)
+		loc rows = subinstr(trim(itrim("`rows'")), " ", ",", .)
+	}
+	levelsof name `if', loc (names) clean sep(",")
+
+	post `handle' 	("`field'") ("`desc'") ("`status'") ("`rows'") ("`names'")
+
+end
 
 
 * adjust outfile columns
@@ -977,49 +1121,50 @@ void format_summary(string scalar filename, string scalar sheetname, numeric vec
 	b.set_sheet(sheetname)
 	b.set_mode("open")
 
-	b.set_font_bold((2, 24), (2, 2), "on")
-	b.set_font_bold((15, 15), (2, 4), "on")
+	b.set_font_bold((2, 26), (2, 2), "on")
+	b.set_font_bold((16, 16), (2, 4), "on")
 
-	b.set_font_italic((4, 11), (2, 2), "on")
-	b.set_font_italic((16, 24), (2, 2), "on")
+	b.set_font_italic((4, 12), (2, 2), "on")
+	b.set_font_italic((17, 26), (2, 2), "on")
 
 	b.set_sheet_merge(sheetname, (2, 2), (2, 3))
-	b.set_sheet_merge(sheetname, (13, 13), (2, 4))
+	b.set_sheet_merge(sheetname, (14, 14), (2, 4))
 
 	b.set_font((2, 2), (2, 2), "calibri", 14)
-	b.set_font((13, 13), (2, 2), "calibri", 14)
+	b.set_font((14, 14), (2, 2), "calibri", 14)
 
 	b.set_horizontal_align((2, 2), (2, 3), "center")
-	b.set_horizontal_align((13, 13), (2, 3), "center")
+	b.set_horizontal_align((14, 14), (2, 3), "center")
 
 	b.set_row_height(3, 3, 10)
-	b.set_row_height(12, 12, 10)
-	b.set_row_height(14, 14, 10)
+	b.set_row_height(13, 13, 10)
+	b.set_row_height(15, 15, 10)
 
-	b.set_left_border((4, 11), (2, 4), "thin")
-	b.set_left_border((15, 24), (2, 5), "thin")
+	b.set_left_border((4, 12), (2, 4), "thin")
+	b.set_left_border((16, 26), (2, 5), "thin")
 
 	b.set_top_border((4, 4), (2, 3), "thin")
-	b.set_top_border((15, 16), (2, 4), "thin")
+	b.set_top_border((16, 17), (2, 4), "thin")
 
-	b.set_bottom_border((11, 11), (2, 3), "thin")
-	b.set_bottom_border((24, 24), (2, 4), "thin")
+	b.set_bottom_border((12, 12), (2, 3), "thin")
+	b.set_bottom_border((26, 26), (2, 4), "thin")
 
+	b.set_fill_pattern((16, 16), (2, 4), "solid", "231 230 230")
 
 	encrypted = st_sdata(10, "value")
 	if (encrypted == "No") {
 		b.set_fill_pattern(10, 3, "solid", "lightpink")
 	} 
 
-	for (i = 1;i <= 9;i ++) {
+	for (i = 1;i <= 10;i ++) {
 		if (colors[i] == -1) {
-			b.set_fill_pattern(15 + i, 4, "solid", "lightyellow")
+			b.set_fill_pattern(16 + i, 4, "solid", "lightyellow")
 		}
 		else if (colors[i] == 0) {
-			b.set_fill_pattern(15 + i, 4, "solid", "lightgreen")
+			b.set_fill_pattern(16 + i, 4, "solid", "lightgreen")
 		}
 		else {
-			b.set_fill_pattern(15 + i, 4, "solid", "lightpink")
+			b.set_fill_pattern(16 + i, 4, "solid", "lightpink")
 		}
 	}
 
@@ -1048,11 +1193,13 @@ void add_borders(string scalar filename, string scalar sheetname)
 		b.set_right_border((1, nrows), (ncols, ncols), "thin")
 	}
 
+	b.set_fill_pattern((1, 1), (1, ncols), "solid", "231 230 230")
+
 	b.close_book()
 
 }
 
-void add_flags(string scalar filename, string scalar sheetname, numeric scalar column, numeric vector rows) 
+void add_flags(string scalar filename, string scalar sheetname, numeric scalar column, numeric vector rows, numeric scalar openxl) 
 {
 	class xl scalar b
 	real scalar ncols, nrows
@@ -1061,7 +1208,10 @@ void add_flags(string scalar filename, string scalar sheetname, numeric scalar c
 
 	b.load_book(filename)
 	b.set_sheet(sheetname)
-	b.set_mode("open")
+
+	if (openxl == 1) { 
+		b.set_mode("open")
+	}
 
 	ncols = st_nvar()
 	nrows = st_nobs() + 1
@@ -1070,7 +1220,9 @@ void add_flags(string scalar filename, string scalar sheetname, numeric scalar c
 		b.set_fill_pattern(rows[i] + 1, column, "solid", "lightpink")
 	}
 
-	b.close_book()
+	if (openxl == 0) {
+		b.close_book()
+	}
 }
 
 end
