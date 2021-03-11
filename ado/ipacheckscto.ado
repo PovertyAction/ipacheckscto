@@ -56,8 +56,8 @@ program define ipacheckscto
 		}
 
 		* save filenames in local
-		if `export' loc filename = substr("`using'", -strpos(reverse(subinstr("`using'", "\", "/", .)), "/") + 1, .)
-
+		loc filename = substr("`using'", -strpos(reverse(subinstr("`using'", "\", "/", .)), "/") + 1, .)
+	
 		* save checks and descriptions in locals to allow for easy updates
 
 		loc chkname1 	"1. recommended fields"
@@ -142,6 +142,12 @@ program define ipacheckscto
 		import 	excel using "`using'", sheet("survey") first allstr clear 
 		prep_data
 
+		* drop other labels that may have been included in survey which are not used by scto
+		cap unab label_drop: label_*
+		if !_rc {
+			drop `label_drop'
+		}
+
 		* count number of label variables
 		unab labels : label*
 		loc lab_cnt = wordcount("`labels'")
@@ -150,7 +156,7 @@ program define ipacheckscto
 		save "`survey'"
 
 		* Display main headers
-
+		
 		noi disp
 		noi disp
 		noi disp _dup(120) "="
@@ -165,9 +171,9 @@ program define ipacheckscto
 		noi disp "Default language"				_column(30) ": `default_lang'"
 		
 		if "`encrypted'" == "Yes" {
-			noi disp "Form Encrypted"	_column(30) "Yes"
+			noi disp "Form Encrypted"	_column(30) ": Yes"
 			count if lower(publishable) == "yes"
-			loc pub_count `r(N)'
+			loc pub_cnt `r(N)'
 			if `pub_cnt' > 0 noi disp "Number of Publishable fields"	_column(30) ": `pub_cnt'"
 			else 		  	 noi disp "Number of Publishable fields"	_column(30) ": {red:`pub_cnt'}"		
 		}
@@ -290,6 +296,7 @@ program define ipacheckscto
 						cond(lower(disabled) == "yes", "disabled", "readonly"))
 
 			sort row type name disabled readonly issue
+			order row type name disabled readonly issue
 
 			noi list, noobs abbrev(32) sep(0)
 			noi disp
@@ -366,7 +373,7 @@ program define ipacheckscto
 			* label each issue type
 			gen issue = cond(!missing(constraint) & nmcm_cnt < `mcm_cnt', "missing constraint message", "missing constraint")
 			
-			noi list row type name appearance constraint constraintmessage*, noobs abbrev(32) sep(0)
+			noi list row type name appearance constraint constraintmessage* issue, noobs abbrev(32) sep(0)
 			noi disp
 
 			drop nmcm_cnt
@@ -384,6 +391,12 @@ program define ipacheckscto
 		
 		* prepare data
 		prep_data
+
+		* drop other labels that may have been included in survey which are not used by scto
+		cap unab label_drop: label_*
+		if !_rc {
+			drop `label_drop'
+		}
 		
 		foreach var of varlist _all {
 			cap assert missing(`var')
@@ -416,8 +429,8 @@ program define ipacheckscto
 
 		noi header, checkname("`chkname6'") checkdesc("`chkdesc6'")
 
+		use "`survey'", clear
 		if "`other'" ~= "" {
-			use "`survey'", clear
 			gen choice_other = 0
 
 			* mark all fields using choices with other specify
@@ -451,31 +464,36 @@ program define ipacheckscto
 			keep if (regexm(type, "or_other$") & wordcount(type) == 3) | ///
 					(missing(child_name) & choice_other) | ///
 					(!missing(child_name) & (child_row < row) & choice_other)
-
-			if `=_N' > 0 {
-
-				* generate comments for each issue
-				gen issue = cond(regexm(type, "or_other$") & wordcount(type) == 3, "or_other syntax used", ///
-							  cond(missing(child_name) & choice_other, "missing other specify field", ///
-							  "other specify field [" + child_name + "] on row " + string(child_row) + " comes before parent field"))
-				
-				keep row type name choice_filter issue	
-				order row type name choice_filter issue
-
-				noi list, noobs abbrev(32) sep(0)
-				noi disp
-
-				loc chk6_cnt `=_N'
-
-				save "`chk6'"
-			}
-			else {
-				loc chk6_cnt 0
-				noi disp "no issues identified"
-			}
-
 		}
-		else "not checked"
+		else {
+
+			keep if (regexm(type, "or_other$") & wordcount(type) == 3) 
+		}
+
+		if `=_N' > 0 {
+
+			* generate comments for each issue
+			if "`other'" ~= "" {
+				gen issue = cond(regexm(type, "or_other$") & wordcount(type) == 3, "or_other syntax used", ///
+						  cond(missing(child_name) & choice_other, "missing other specify field", ///
+						  "other specify field [" + child_name + "] on row " + string(child_row) + " comes before parent field"))
+			}
+			else gen issue = "or_other syntax used"
+			
+			keep row type name choice_filter issue	
+			order row type name choice_filter issue
+
+			noi list, noobs abbrev(32) sep(0)
+			noi disp
+
+			loc chk6_cnt `=_N'
+
+			save "`chk6'"
+		}
+		else {
+			loc chk6_cnt 0
+			noi disp "no issues identified"
+		}
 
 		* check 7: Flag field that do not allow for don't know and refuse to answer
 			* check that choice list includes dk, ref for select_one | select_multiple
@@ -501,12 +519,17 @@ program define ipacheckscto
 				}
 			}
 
-			replace dontknow = 1 if inlist(type, "integer", "decimal", "text") & ///
-				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`dontknow'|\.=`dontknow'")
+			if "`dontknow'" ~= "" {
+				replace dontknow = 1 if inlist(type, "integer", "decimal", "text") & ///
+				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`dontknow'|or.*\.=`dontknow'|regex\(.*\-`dontknow'.*\)")
+
+			}
 			
-			replace refuse = 1 if inlist(type, "integer", "decimal", "text") & ///
-				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`refuse'|or\.=`refuse'")
-		
+			if "`refuse'" ~= "" {
+				replace refuse = 1 if inlist(type, "integer", "decimal", "text") & ///
+				regexm(subinstr(trim(itrim(constraint)), " ", "", .), "^\.=`refuse'|or.*\.=`refuse'|regex\(.*\-`refuse'.*\)")
+			}
+			
 			keep if inlist(type, "integer", "decimal", "text") | regexm(type, "^select_one|^select_multiple")
 			
 			if "`dontknow'" ~= "" & "`refuse'" ~= "" drop if dontknow & refuse
@@ -521,8 +544,12 @@ program define ipacheckscto
 			
 				keep row type name constraint dontknow refuse
 
-				gen issue = cond(!dontknow & !refuse, "don't know & refuse not allowed", ///
+				if "`dontknow'" ~= "" & "`refuse'" ~= "" {
+					gen issue = cond(!dontknow & !refuse, "don't know & refuse not allowed", ///
 							cond(!dontknow, "don't know not allowed", "refuse not allowed"))
+				}
+				else if "`dontknow'" == "" 	gen issue = "refuse not allowed"
+				else 						gen issue = "don't know not allowed"
 
 				drop dontknow refuse
 				order row type name constraint issue
@@ -536,8 +563,11 @@ program define ipacheckscto
 			else noi disp "not issues identified"
 
 		}
-		else noi disp "not checked"
-		
+		else {
+			noi disp "not checked"
+			loc chk7_cnt 0
+		}
+
 		* ---------------------------------------------------------------
 		* Check and pair up group names
 		* ---------------------------------------------------------------
@@ -562,8 +592,34 @@ program define ipacheckscto
 			count if regexm(type, "^(end)")
 			loc e_cnt `r(N)'
 			
-			if `b_cnt' ~= `e_cnt' noi disp as err ///
-				"Invalid form: There are `b_cnt' begin group/repeat and `e_cnt' end group/repeat fields"
+			if `b_cnt' ~= `e_cnt' {
+				disp as err "Invalid form: There are `b_cnt' begin group/repeat and `e_cnt' end group/repeat fields"
+				keep type name
+				
+				count if inlist(type, "begin group", "end group")
+				if mod(`r(N)', 2) keep if inlist(type, "begin group", "end group")
+				else keep if inlist(type, "begin repeat", "end repeat")
+
+				loc cont 1
+				while `cont' {
+					gen tag = (regexm(type, "^begin") & regexm(type[_n+1], "^end")) | ///
+						  	  (regexm(type, "^end") & regexm(type[_n-1], "^begin"))	
+						  	  
+					drop if tag
+					drop tag
+
+					count if regexm(type, "^begin")	
+					loc b_cnt `r(N)'
+					count if regexm(type, "^end")
+					loc e_cnt `r(N)'
+
+					if !`b_cnt' | !`e_cnt' {
+						noi disp "The following fields do not have a matching pair"
+						noi list, noobs abbrev(32) sep(0)
+						exit 198
+					}
+				}
+			}
 
 			foreach index in `indexes' {				
 				loc b 1
@@ -571,6 +627,7 @@ program define ipacheckscto
 				loc curr_index `index'
 				loc stop 0
 				while `stop' == 0 {
+
 					loc ++curr_index 
 					cap assert regexm(type, "^(end)") & regexm(type, "group|repeat") in `curr_index'
 					if !_rc {
@@ -608,8 +665,12 @@ program define ipacheckscto
 
 			if `chk8_cnt' > 0 {
 
+				gen issue = "group names don't match"
+
 				order type begin_row begin_fieldname end_row end_fieldname
-				noi list type begin_row begin_fieldname end_row end_fieldname, noobs abbrev(32) sep(0)
+				keep type begin_row begin_fieldname end_row end_fieldname issue
+
+				noi list, noobs abbrev(32) sep(0)
 				noi disp
 
 				save "`chk8'"
@@ -618,7 +679,7 @@ program define ipacheckscto
 
 		}
 		else {
-			noi disp "{red: Not checked: XLS form has not groups or repeats}"
+			noi disp "{red: Not checked; XLS form has not groups or repeats}"
 			loc chk8_cnt 0
 		}
 		
@@ -669,7 +730,7 @@ program define ipacheckscto
 			#d cr
 
 			foreach var of varlist appearance constraint relevance calculation repeat_count {
-				
+
 				replace `var' = subinstr(`var', "$", "#", .)
 				replace `var' = subinstr(`var', char(34), char(39), .)
 
@@ -686,9 +747,8 @@ program define ipacheckscto
 						loc rc = _rc
 					}
 				}
-
 			}
-			
+
 			* check for inappropraite use of syntax
 			gen rpt_flag 	= 0
 			gen rpt_flagvar = "/"
@@ -710,7 +770,7 @@ program define ipacheckscto
 			#d cr
 			
 			foreach var of varlist `cols' {
-			
+				
 				foreach rvar in `rvars' {
 
 					levelsof rpt_group if name == "`rvar'", loc(rvar_group) clean 
@@ -721,7 +781,7 @@ program define ipacheckscto
 				}				
 
 			}
-			
+		
 			save "`chk9'"
 			
 			* import and check choices sheet
@@ -819,13 +879,15 @@ program define ipacheckscto
 
 				drop if missing(sheet)
 
+				gen issue = "illegal use of repeat field"
+
 				ren rpt_flagcol column
 				ren rpt_flagvar repeat_field
 
-				order sheet row type name repeat_field column
+				order sheet row type name column repeat_field issue
+				keep sheet row type name column repeat_field issue
 
-				ren rpt_group repeat_group
-				noi list sheet row type name repeat_field column, noobs abbrev(32) sep(0)
+				noi list, noobs abbrev(32) sepby(row)
 				noi disp
 
 				loc chk9_cnt `=_N'
@@ -839,7 +901,7 @@ program define ipacheckscto
 		}
 		else {
 			loc chk9_cnt 0
-			noi disp "{red: Not checked: XLS form has no repeat groups"
+			noi disp "{red: Not checked; XLS form has no repeat groups}"
 		}
 		
 		* check 10: choices list: Check for duplicates in choice list
@@ -881,18 +943,22 @@ program define ipacheckscto
 			save "`chk10'", replace
 		}
 
-		if `=_N' > 0 {
+		loc chk10_cnt `=_N'
+
+		if `chk10_cnt' > 0 {
 			sort column list_name row
 
-			loc chk10_cnt `=_N'
-			
 			gen issue = cond(column == "value", "duplicate value", cond(missing(label), "missing label", "duplicate label"))
 			order list_name value label row column
-			gen seperator = list_name + "/" + issue 
+			gen seperator = list_name + "/" + column + "/" + issue 
+			sort list_name issue column row
 			noi list list_name value label row column issue, noobs abbrev(32) sepby(seperator)
 
 			drop seperator
 			save "`chk10'", replace
+		}
+		else {
+			noi disp "no issues identified"
 		}
 
 		* export data
@@ -904,6 +970,7 @@ program define ipacheckscto
 
 			* replace number of languages
 			replace value = "`lab_cnt'" if field == "Number of Languages"
+			replace value = "`pub_cnt'" if field == "Number of Publishable fields"
 
 			loc  summ_cols ""
 
