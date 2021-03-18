@@ -16,11 +16,14 @@ net install ipacheckscto, all replace ///
 
 ## Syntax
 ```stata
-ipacheckscto using filename, outfile(string) replace]
+ipacheckscto using filename[, outfile(string) other(integer) dontknow(integer) refuse(integer) replace]
 
 options
-	outfile 		- Export Issues into an excel file
-	replace			- Overwrite excel file
+	outfile 		- Output results to excel filename
+	other			- Specify integer value for other specify
+	dontknow		- Specify integer value for don't know
+	refuse			- Specify integer value for refuse to answer
+	replace			- Overwrite existing outfile
 
 ```
 
