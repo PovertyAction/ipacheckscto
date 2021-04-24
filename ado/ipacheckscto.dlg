@@ -1,28 +1,15 @@
 /* Title	: ipacheckscto
    Purpose	: Dialog Box for using ipacheckscto.ado
-   Date		: 14feb2018
+   Date		: Mar2021
    Author	: Ishmail Azindoo Baako
 			  iabaako@poverty-action.org
 */
 
-*! version 1.0 Ishmail Azindoo Baako (IPA)
+*! version 1.2 Ishmail Azindoo Baako (IPA)
 
 VERSION 14.0
 
-POSITION 300 200 600 300 50
-
-DIALOG main, label("ipacheckscto - Check SurveyCTO XLS Form") tabtitle("Main")
-BEGIN
-  GROUPBOX gb_info  10   10   580  60, label(information)
-  TEXT     tx_desc  +10  +20  560  .,  label(IMPORTANT: Ensure the xls form correctly uploads to the SurveyCTO server before running this command) 
-  TEXT     tx_xls   10   80	  120	 ., label(Select XLS Form)
-  FILE 	   fl_xls 	10	 +20	580	 ., label(Browse ...) error(select XLS form)
-  TEXT	   tx_out		10	 +40  400	 ., label(Optionally Save Output to Excel File)
-  FILE 	   fl_out		10	 +20  580  ., label(Save As ...) error(specify output file) save
-  TEXT     tx_oth   10   +40  400  ., label(Optionally Specify value for other specify)
-  EDIT     ed_oth   10   +20  580  .
-  CHECKBOX cb_rep   20   +30  .    ., label(replace) option(replace) 
-END
+POSITION 300 200 600 320 50
 
 OK ok1,      label("OK")
 CANCEL can1, label("Cancel")
@@ -30,6 +17,24 @@ SUBMIT sub1, label("Submit")
 HELP hlp1,   view("help ipacheckscto")
 RESET res1
 COPY copy1
+
+DIALOG main, label("ipacheckscto - Check SurveyCTO XLS Form") tabtitle("Main")
+BEGIN
+  GROUPBOX gb_info  10   10   580  60, label(information)
+  TEXT     tx_desc  +10  +20  560  .,  label(IMPORTANT: Ensure the xls form correctly uploads to the SurveyCTO server before running this command) 
+  TEXT     tx_xls   10   80   120  ., label(Select XLS Form)
+  FILE     fl_xls   10   +20  580  ., label(Browse ...) error(select XLS form)
+  TEXT     tx_out   10   +40  350  ., label(Optionally Save Output to Excel File)
+  FILE     fl_out   10   +20  580  ., label(Save As ...) error(specify output file) defext(xlsx) save
+  CHECKBOX cb_rep   510  +30  .    ., label(replace) option(replace)
+  GROUPBOX gb_vals  10   +40  580  80, label(Specify values for)
+  TEXT     tx_oth   15   +20  100  ., label(other specify)
+  EDIT     ed_oth   15   +20  100  .
+  TEXT     tx_dnk   +235 -20  100  ., label(don't know)
+  EDIT     ed_dnk   @    +20  100  .
+  TEXT     tx_ref   +235 -20  100  ., label(refuse to answer)
+  EDIT     ed_ref   @    +20  100  .
+END
 
 PROGRAM command
 BEGIN
@@ -39,5 +44,7 @@ BEGIN
     put ", "
     put "outfile(" main.fl_out ") "
     put "other(" main.ed_oth ") "
+    put "dontknow(" main.ed_dnk ") "
+    put "refuse(" main.ed_ref ") "
       option main.cb_rep
 END
