@@ -560,7 +560,7 @@ program define ipacheckscto
 
 				save "`chk7'", replace
 			}
-			else noi disp "not issues identified"
+			else noi disp "no issues identified"
 
 		}
 		else {
@@ -679,7 +679,7 @@ program define ipacheckscto
 
 		}
 		else {
-			noi disp "{red: Not checked; XLS form has not groups or repeats}"
+			noi disp "{red: Not checked; XLS form has no groups or repeats}"
 			loc chk8_cnt 0
 		}
 		
