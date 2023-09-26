@@ -2,7 +2,7 @@
 
 ## Overview
 
-ipacheckscto is a Stata Module for checking SurveyCTO XLS forms for possible errors and best practices. Please note that this program does not check for issues that are already included in the SurveyCTO server debug program. Please ensure that have succesfully uploaded your form onto the SurveyCTO server before running this program.
+ipacheckscto is a Stata Module for checking SurveyCTO XLS forms for possible errors and best practices. Please note that this program does not check for issues that are already included in the SurveyCTO server debug program. Please ensure that you have succesfully uploaded your form onto the SurveyCTO server before running this program.
 
 
 ## Installation
